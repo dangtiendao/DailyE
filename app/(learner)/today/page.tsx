@@ -1,10 +1,40 @@
 import React from 'react';
-import { CalendarDays, Sparkles } from 'lucide-react';
+import { CalendarDays, Sparkles, AlertTriangle, Info } from 'lucide-react';
 
-// Tab 1: Màn hình "Hôm nay" - Lộ trình và nhiệm vụ học hàng ngày
-export default function TodayPage() {
+interface TodayPageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}
+
+// Tab 1: Màn hình "Hôm nay" - Lộ trình & Nhiệm vụ học hàng ngày
+export default async function TodayPage({ searchParams }: TodayPageProps) {
+  const params = await searchParams;
+  const errorParam = params?.error;
+  const noticeParam = params?.notice;
+
   return (
     <div className="space-y-6">
+      {/* Thông báo sai quyền từ Middleware */}
+      {errorParam === 'unauthorized' && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center gap-3 text-red-600 text-xs shadow-sm">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-red-500" />
+          <div>
+            <p className="font-bold text-slate-900">Không có quyền truy cập</p>
+            <p className="text-slate-600">Trang quản trị chỉ dành cho tài khoản Admin.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Thông báo làm bài test đầu vào sau Onboarding */}
+      {noticeParam === 'placement_test_soon' && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3 text-blue-700 text-xs shadow-sm">
+          <Info className="w-5 h-5 shrink-0 text-blue-600" />
+          <div>
+            <p className="font-bold text-slate-900">Thông báo bài Test đầu vào</p>
+            <p className="text-slate-600">Tính năng bài test sẽ ra mắt ở các phase tiếp theo. Hãy bắt đầu học các bài học kiến thức trước nhé!</p>
+          </div>
+        </div>
+      )}
+
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Hôm nay</h1>
@@ -25,7 +55,7 @@ export default function TodayPage() {
       </section>
 
       <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
-        <p className="text-center text-slate-500 text-sm">Giao diện nhiệm vụ sẽ được triển khai ở các phase tiếp theo.</p>
+        <p className="text-center text-slate-500 text-sm">Giao diện nhiệm vụ sẽ được tích hợp dữ liệu ở các phase tiếp theo.</p>
       </div>
     </div>
   );
