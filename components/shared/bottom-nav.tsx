@@ -43,8 +43,8 @@ export function BottomNav() {
       <div className="max-w-md mx-auto flex items-center justify-around py-2 px-1">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          // Kiểm tra xem tab hiện tại có đang được truy cập hay không
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          // Kiểm tra xem tab hiện tại có đang được truy cập hay không (an toàn với null pathname)
+          const isActive = pathname ? (pathname === item.href || pathname.startsWith(`${item.href}/`)) : false;
 
           return (
             <Link
