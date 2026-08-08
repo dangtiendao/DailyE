@@ -146,8 +146,8 @@ function QuizEngineContent() {
         router.push(`/practice/result/${result.attemptId}`);
         router.refresh();
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi gửi bài thi về máy chủ');
+    } catch (err) {
+      setErrorMessage((err as Error).message || 'Lỗi gửi bài thi về máy chủ');
       setIsSubmitting(false);
     }
   };

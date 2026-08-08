@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { parseExcelImport, commitExcelImport } from '@/app/actions/admin';
+import { parseExcelImport, commitExcelImport, ParsedImportRow } from '@/app/actions/admin';
 import {
   Upload,
   FileSpreadsheet,
@@ -52,8 +52,8 @@ export default function AdminImportPage() {
       } else {
         setParseResult(res);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi đọc file trên Server');
+    } catch (err) {
+      setErrorMessage((err as Error).message || 'Lỗi đọc file trên Server');
     } finally {
       setIsParsing(false);
     }
@@ -76,8 +76,8 @@ export default function AdminImportPage() {
         setParseResult(null);
         setSelectedFile(null);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Lỗi ghi dữ liệu vào Server');
+    } catch (err) {
+      setErrorMessage((err as Error).message || 'Lỗi ghi dữ liệu vào Server');
     } finally {
       setIsCommitting(false);
     }
@@ -197,7 +197,7 @@ export default function AdminImportPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {parseResult.results.map((row: any) => (
+                {parseResult.results.map((row: ParsedImportRow) => (
                   <tr
                     key={row.rowIndex}
                     className={cn(

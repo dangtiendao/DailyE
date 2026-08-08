@@ -267,7 +267,7 @@ export async function getAttemptResult(attemptId: string) {
     selectedAnswer: ua.selected_answer as 'A' | 'B' | 'C' | 'D',
     isCorrect: ua.is_correct,
     timeSpentSeconds: ua.time_spent_seconds,
-    question: (ua as any).questions,
+    question: ua.questions as unknown as AttemptAnswerDetail['question'],
   }));
 
   // Phân tích tỷ lệ đúng theo từng knowledge_tag

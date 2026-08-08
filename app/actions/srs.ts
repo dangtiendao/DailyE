@@ -1,8 +1,8 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { SupabaseClient } from '@supabase/supabase-js';
-import { Database } from '@/types/database';
+
+type TypedSupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export interface ErrorLogItem {
   id: string;
@@ -60,7 +60,7 @@ const LEITNER_INTERVALS = [1, 2, 4, 7, 15];
 // 1. TÍNH TOÁN STREAK NGÀY HỌC LIÊN TIẾP (🔥)
 // ------------------------------------------------------------------------------
 async function updateAndGetStreak(
-  supabase: SupabaseClient<Database>,
+  supabase: TypedSupabaseClient,
   userId: string,
   currentStreak: number,
   lastActiveDate: string | null
@@ -125,7 +125,7 @@ export async function getTodayDashboardData(): Promise<TodayDashboardData> {
     .single();
 
   const streakCount = await updateAndGetStreak(
-    supabase as any,
+    supabase,
     user.id,
     profile?.streak_count || 0,
     profile?.last_active_date || null
@@ -247,7 +247,7 @@ export async function getErrorNotebookItems(): Promise<ErrorTagGroup[]> {
 
   const tagGroupMap = new Map<string, ErrorLogItem[]>();
 
-  (rawLogs as any[]).forEach((log) => {
+  (rawLogs as unknown as ErrorLogItem[]).forEach((log) => {
     const tag = log.knowledge_tag || 'Ngữ pháp chung';
     const currentList = tagGroupMap.get(tag) || [];
     currentList.push({
@@ -258,7 +258,7 @@ export async function getErrorNotebookItems(): Promise<ErrorTagGroup[]> {
       consecutive_correct: log.consecutive_correct || 0,
       last_wrong_at: log.last_wrong_at,
       resolved: log.resolved,
-      question: log.questions,
+      question: (log as unknown as { questions: ErrorLogItem['question'] }).questions,
     });
     tagGroupMap.set(tag, currentList);
   });
@@ -339,7 +339,7 @@ export async function submitErrorReviewAttempt(answers: { questionId: string; se
     }
 
     // Cập nhật mốc lặp lại SRS Leitner
-    await updateSrsItem(supabase as any, user.id, 'question', ans.questionId, isCorrect);
+    await updateSrsItem(supabase, user.id, 'question', ans.questionId, isCorrect);
   }
 
   return {
@@ -354,7 +354,7 @@ export async function submitErrorReviewAttempt(answers: { questionId: string; se
 // 5. THUẬT TOÁN SRS LEITNER (BẬC GIÃN KHOẢNG CÁCH: 1 -> 2 -> 4 -> 7 -> 15 NGÀY)
 // ------------------------------------------------------------------------------
 async function updateSrsItem(
-  supabase: SupabaseClient<Database>,
+  supabase: TypedSupabaseClient,
   userId: string,
   itemType: 'vocabulary' | 'question',
   itemId: string,
@@ -371,7 +371,10 @@ async function updateSrsItem(
     .eq('item_id', itemId)
     .single();
 
-  let currentInterval = schedule?.interval_days || 1;
+  type ReviewScheduleItem = { id: string; interval_days: number; review_count: number };
+  const scheduleItem = schedule as unknown as ReviewScheduleItem | null;
+
+  const currentInterval = scheduleItem?.interval_days || 1;
   let nextInterval = 1;
 
   if (isCorrect) {
@@ -391,16 +394,16 @@ async function updateSrsItem(
   dueDate.setDate(dueDate.getDate() + nextInterval);
   const dueDateStr = dueDate.toISOString().split('T')[0];
 
-  if (schedule) {
+  if (scheduleItem) {
     await supabase
       .from('review_schedule')
       .update({
         interval_days: nextInterval,
         due_date: dueDateStr,
-        review_count: (schedule.review_count || 0) + 1,
+        review_count: (scheduleItem.review_count || 0) + 1,
         last_reviewed_at: now.toISOString(),
       })
-      .eq('id', schedule.id);
+      .eq('id', scheduleItem.id);
   } else {
     await supabase.from('review_schedule').insert({
       user_id: userId,

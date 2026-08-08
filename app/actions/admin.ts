@@ -132,7 +132,7 @@ export async function getAdminDashboardStats(): Promise<DashboardStatsResult> {
     totalUsers: totalUsers || 0,
     latestImport:
       latestImports && latestImports.length > 0
-        ? (latestImports[0] as any)
+        ? (latestImports[0] as DashboardStatsResult["latestImport"])
         : null,
   };
 }
@@ -316,7 +316,8 @@ export async function parseExcelImport(formData: FormData) {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
-  const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet);
+  const rawRows: Record<string, unknown>[] =
+    XLSX.utils.sheet_to_json(worksheet);
 
   if (!rawRows || rawRows.length === 0) {
     return {
@@ -476,7 +477,7 @@ export async function commitExcelImport(
   // 1. Chèn danh sách câu hỏi vào bảng questions với status='draft'
   const { error: insertError } = await supabase
     .from("questions")
-    .insert(validRows as any);
+    .insert(validRows);
 
   if (insertError) {
     return { success: false, error: `Lỗi ghi vào DB: ${insertError.message}` };

@@ -10,6 +10,8 @@ import {
   getLessons,
   upsertLesson,
   deleteLesson,
+  UpsertQuestionInput,
+  UpsertLessonInput,
 } from '@/app/actions/admin';
 import {
   FileText,
@@ -113,10 +115,10 @@ export default function AdminContentPage() {
   const handleSaveQuestion = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const payload = {
+    const payload: UpsertQuestionInput = {
       id: editingQuestion?.id,
       code: String(formData.get('code') || '').trim(),
-      exam_part: String(formData.get('exam_part') || 'part5') as any,
+      exam_part: (String(formData.get('exam_part') || 'part5') as UpsertQuestionInput['exam_part']),
       question_text: String(formData.get('question_text') || '').trim(),
       options: {
         A: String(formData.get('optionA') || '').trim(),
@@ -124,10 +126,10 @@ export default function AdminContentPage() {
         C: String(formData.get('optionC') || '').trim(),
         D: String(formData.get('optionD') || '').trim(),
       },
-      correct_answer: String(formData.get('correct_answer') || 'A') as any,
+      correct_answer: (String(formData.get('correct_answer') || 'A') as UpsertQuestionInput['correct_answer']),
       explanation: String(formData.get('explanation') || '').trim() || null,
-      difficulty: String(formData.get('difficulty') || 'medium') as any,
-      status: String(formData.get('status') || 'draft') as any,
+      difficulty: (String(formData.get('difficulty') || 'medium') as UpsertQuestionInput['difficulty']),
+      status: (String(formData.get('status') || 'draft') as UpsertQuestionInput['status']),
     };
 
     const res = await upsertQuestion(payload);
@@ -144,12 +146,12 @@ export default function AdminContentPage() {
   const handleSaveLesson = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const payload = {
+    const payload: UpsertLessonInput = {
       id: editingLesson?.id,
       title: String(formData.get('title') || '').trim(),
       slug: String(formData.get('slug') || '').trim(),
-      skill: String(formData.get('skill') || 'vocabulary') as any,
-      status: String(formData.get('status') || 'draft') as any,
+      skill: (String(formData.get('skill') || 'vocabulary') as UpsertLessonInput['skill']),
+      status: (String(formData.get('status') || 'draft') as UpsertLessonInput['status']),
       content: String(formData.get('content') || '').trim(),
     };
 

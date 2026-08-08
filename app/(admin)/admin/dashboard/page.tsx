@@ -1,22 +1,22 @@
 import React from 'react';
 import Link from 'next/link';
-import { getAdminDashboardStats } from '@/app/actions/admin';
+import { getAdminDashboardStats, DashboardStatsResult } from '@/app/actions/admin';
 import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck } from 'lucide-react';
 
 // Trang Admin Dashboard kết nối Server Action lấy thống kê thực tế
 export default async function AdminDashboardPage() {
-  let stats = {
+  let stats: DashboardStatsResult = {
     totalQuestions: 0,
     totalLessons: 0,
     totalUsers: 0,
-    latestImport: null as any,
+    latestImport: null,
   };
   let fetchError = null;
 
   try {
     stats = await getAdminDashboardStats();
-  } catch (err: any) {
-    fetchError = err.message || 'Lỗi tải thống kê';
+  } catch (err) {
+    fetchError = (err as Error).message || 'Lỗi tải thống kê';
   }
 
   return (
