@@ -25,28 +25,34 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
-          full_name: string;
-          target_score: number;
+          full_name: string | null;
+          target_score: number | null;
           access_level: AccessLevel;
           current_level: string | null;
+          streak_count: number;
+          last_active_date: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
-          full_name: string;
-          target_score?: number;
+          full_name?: string | null;
+          target_score?: number | null;
           access_level?: AccessLevel;
           current_level?: string | null;
+          streak_count?: number;
+          last_active_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
-          full_name?: string;
-          target_score?: number;
+          full_name?: string | null;
+          target_score?: number | null;
           access_level?: AccessLevel;
           current_level?: string | null;
+          streak_count?: number;
+          last_active_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -308,6 +314,7 @@ export interface Database {
           question_id: string;
           knowledge_tag: string | null;
           wrong_count: number;
+          consecutive_correct: number;
           last_wrong_at: string;
           resolved: boolean;
           resolved_at: string | null;
@@ -319,6 +326,7 @@ export interface Database {
           question_id: string;
           knowledge_tag?: string | null;
           wrong_count?: number;
+          consecutive_correct?: number;
           last_wrong_at?: string;
           resolved?: boolean;
           resolved_at?: string | null;
@@ -330,6 +338,7 @@ export interface Database {
           question_id?: string;
           knowledge_tag?: string | null;
           wrong_count?: number;
+          consecutive_correct?: number;
           last_wrong_at?: string;
           resolved?: boolean;
           resolved_at?: string | null;

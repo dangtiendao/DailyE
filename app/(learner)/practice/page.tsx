@@ -150,6 +150,31 @@ export default function PracticeModePage() {
           ))}
         </div>
       </section>
+
+      {/* CHẾ ĐỘ 4: ÔN LỖI SAI (SỔ LỖI SAI) */}
+      <section className="space-y-3">
+        <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
+          <span>🔁 Sổ lỗi sai & Ôn tập ngắt quãng (SRS)</span>
+        </h2>
+
+        <Link
+          href="/practice/errors"
+          className="p-4 bg-rose-50 border border-rose-200 hover:border-rose-400 rounded-2xl shadow-sm flex items-center justify-between transition group cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+              <AlertOctagon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-900 text-xs group-hover:text-rose-600 transition">
+                Mở Sổ lỗi sai cá nhân
+              </p>
+              <p className="text-[11px] text-rose-700">Xem lại và ôn tập các câu từng làm sai (Quy tắc đúng 2 lần liên tiếp)</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-rose-600 group-hover:translate-x-1 transition" />
+        </Link>
+      </section>
     </div>
   );
 }
