@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { getAdminDashboardStats, DashboardStatsResult } from '@/app/actions/admin';
-import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 // Trang Admin Dashboard kết nối Server Action lấy thống kê thực tế
 export default async function AdminDashboardPage() {
@@ -31,6 +31,13 @@ export default async function AdminDashboardPage() {
           <p className="text-xs text-slate-500 mt-0.5">Tổng quan thống kê hệ thống & quản trị nội dung DailyE</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/admin/vocab-test"
+            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            Test Vocab Engine
+          </Link>
           <Link
             href="/admin/content"
             className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"

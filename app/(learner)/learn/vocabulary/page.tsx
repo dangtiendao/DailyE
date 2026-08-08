@@ -2,181 +2,299 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getVocabularyItems, VocabularyFlashcardItem } from '@/app/actions/learn';
-import { ArrowLeft, RotateCw, CheckCircle2, XCircle, Sparkles, RefreshCw, Trophy, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import {
+  getVocabTopicsWithProgress,
+  getNewWordsForTopic,
+  recordWordsIntroduced,
+  completeNewWordsSession,
+  VocabTopicWithProgress,
+  LearnableVocabItem,
+} from '@/app/actions/vocab_learn';
+import { TopicCard } from '@/components/vocab/TopicCard';
+import { WordIntroCard } from '@/components/vocab/WordIntroCard';
+import { VocabQuizEngine } from '@/components/vocab/VocabQuizEngine';
+import {
+  BookOpen,
+  Sparkles,
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Home,
+  Award,
+} from 'lucide-react';
+import { VocabQuizQuestion } from '@/app/actions/vocab';
 
-// Trang Flashcards Từ vựng TOEIC tương tác trong-phiên
-export default function FlashcardsPage() {
-  const [initialItems, setInitialItems] = useState<VocabularyFlashcardItem[]>([]);
-  const [queue, setQueue] = useState<VocabularyFlashcardItem[]>([]);
-  const [masteredCount, setMasteredCount] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+type LearnPhase = 'intro' | 'quiz';
 
-  // Tải danh sách từ vựng
-  const loadVocab = async () => {
-    setIsLoading(true);
-    const data = await getVocabularyItems();
-    setInitialItems(data);
-    setQueue(data);
-    setMasteredCount(0);
-    setIsFlipped(false);
-    setIsLoading(false);
+export default function VocabularyPage() {
+  const [isLoadingTopics, setIsLoadingTopics] = useState(true);
+  const [topics, setTopics] = useState<VocabTopicWithProgress[]>([]);
+
+  // State luồng phiên học
+  const [selectedTopic, setSelectedTopic] = useState<VocabTopicWithProgress | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [sessionWords, setSessionWords] = useState<LearnableVocabItem[]>([]);
+  const [sessionErrorMessage, setSessionErrorMessage] = useState<string | null>(null);
+
+  // State các bước trong phiên học
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0); // 0 (5 từ đầu) hoặc 1 (5 từ sau)
+  const [currentPhase, setCurrentPhase] = useState<LearnPhase>('intro');
+  const [isSessionCompleted, setIsSessionCompleted] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<number>(Date.now());
+
+  // Tải danh sách chủ đề
+  const loadTopics = async () => {
+    setIsLoadingTopics(true);
+    try {
+      const data = await getVocabTopicsWithProgress();
+      setTopics(data);
+    } catch (err) {
+      console.error('Lỗi đọc danh sách topics:', err);
+    } finally {
+      setIsLoadingTopics(false);
+    }
   };
 
   useEffect(() => {
-    loadVocab();
+    loadTopics();
   }, []);
 
-  const currentCard = queue[0];
+  // Bắt đầu phiên học từ mới cho 1 topic
+  const handleStartTopicSession = async (topicCode: string) => {
+    const topic = topics.find((t) => t.code === topicCode);
+    if (!topic) return;
 
-  // Xử lý khi nhấn "Đã nhớ" (Loại bỏ từ khỏi phiên)
-  const handleRemember = () => {
-    if (queue.length === 0) return;
-    setIsFlipped(false);
-    setMasteredCount((prev) => prev + 1);
-    setQueue((prev) => prev.slice(1));
+    setSelectedTopic(topic);
+    setIsLoadingSession(true);
+    setSessionErrorMessage(null);
+    setIsSessionCompleted(false);
+    setCurrentBatchIndex(0);
+    setCurrentPhase('intro');
+    setSessionStartTime(Date.now());
+
+    try {
+      const res = await getNewWordsForTopic(topicCode, 10);
+      if (!res.success || !res.words) {
+        setSessionErrorMessage(res.error || 'Không thể lấy từ mới cho chủ đề này');
+      } else {
+        setSessionWords(res.words);
+      }
+    } catch (err) {
+      setSessionErrorMessage((err as Error).message || 'Lỗi kết nối máy chủ');
+    } finally {
+      setIsLoadingSession(false);
+    }
   };
 
-  // Xử lý khi nhấn "Chưa nhớ" (Đẩy từ về cuối hàng đợi phiên hiện tại)
-  const handleForget = () => {
-    if (queue.length === 0) return;
-    setIsFlipped(false);
-    setQueue((prev) => {
-      const [first, ...rest] = prev;
-      return [...rest, first];
-    });
+  // Hoàn thành đợt giới thiệu từ mới (5 từ)
+  const handleFinishIntroBatch = async () => {
+    const batchWords = sessionWords.slice(currentBatchIndex * 5, (currentBatchIndex + 1) * 5);
+    const vocabIds = batchWords.map((w) => w.id);
+
+    // Ghi nhận vào user_vocab_progress (familiarity = 1)
+    await recordWordsIntroduced(vocabIds);
+
+    // Chuyển sang Phase Quiz cho 5 từ này
+    setCurrentPhase('quiz');
   };
 
-  const totalCards = initialItems.length;
-  const progressPercent = totalCards > 0 ? Math.round((masteredCount / totalCards) * 100) : 0;
+  // Hoàn thành đợt Quiz (5 từ)
+  const handleFinishQuizBatch = async () => {
+    const hasNextBatch = (currentBatchIndex + 1) * 5 < sessionWords.length;
+
+    if (hasNextBatch) {
+      setCurrentBatchIndex((b) => b + 1);
+      setCurrentPhase('intro');
+    } else {
+      // Đã hoàn thành toàn bộ phiên học -> Đẩy vào review_schedule (due ngày mai)
+      const allVocabIds = sessionWords.map((w) => w.id);
+      const elapsed = Math.round((Date.now() - sessionStartTime) / 1000);
+      await completeNewWordsSession(allVocabIds, elapsed);
+
+      setIsSessionCompleted(true);
+      loadTopics(); // Tải lại tiến độ các topic
+    }
+  };
+
+  // Thoát phiên học về danh sách chủ đề
+  const handleExitSession = () => {
+    setSelectedTopic(null);
+    setSessionWords([]);
+    setIsSessionCompleted(false);
+  };
+
+  // ============================================================================
+  // GIAO DIỆN 1: BẢNG DANH SÁCH CHỦ ĐỀ
+  // ============================================================================
+  if (!selectedTopic) {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto pb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/learn"
+                className="p-1.5 bg-white hover:bg-slate-200 text-slate-600 rounded-lg transition"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Link>
+              <h1 className="text-2xl font-bold text-slate-900">Học Từ vựng Active Recall</h1>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Chọn chủ đề để học từ mới & kiểm tra ghi nhớ chủ động</p>
+          </div>
+          <div className="p-2.5 bg-amber-100 text-amber-600 rounded-2xl">
+            <Sparkles className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Loading Topics State */}
+        {isLoadingTopics ? (
+          <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto" />
+            <p className="text-xs text-slate-500">Đang nạp danh mục chủ đề & tiến độ...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {topics.map((t) => (
+              <TopicCard key={t.code} topic={t} onSelectTopic={handleStartTopicSession} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // GIAO DIỆN 2: PHIÊN HỌC TỪ MỚI (INTRO 5 TỪ -> QUIZ 5 TỪ -> TỔNG KẾT)
+  // ============================================================================
+  const currentBatchWords = sessionWords.slice(currentBatchIndex * 5, (currentBatchIndex + 1) * 5);
+  const totalBatches = Math.ceil(sessionWords.length / 5);
 
   return (
-    <div className="space-y-6 pb-8 max-w-md mx-auto">
-      {/* Header */}
-      <header className="flex items-center justify-between">
-        <Link
-          href="/learn"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition"
+    <div className="space-y-6 max-w-md mx-auto pb-8">
+      {/* Header Phiên học */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={handleExitSession}
+          className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-xl transition shadow-xs"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Về trang Học</span>
-        </Link>
-        <span className="font-bold text-xs text-slate-700 flex items-center gap-1">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Flashcards từ vựng
-        </span>
-      </header>
+          <span>Thoát phiên học</span>
+        </button>
 
-      {/* Progress Bar Phiên học */}
-      <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-700">Tiến độ phiên học</span>
-          <span className="font-bold text-blue-600">{masteredCount} / {totalCards} từ ({progressPercent}%)</span>
-        </div>
-        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-          <div
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full rounded-full transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
+          {selectedTopic.displayName}
+        </span>
       </div>
 
-      {isLoading ? (
-        <div className="min-h-[300px] flex flex-col items-center justify-center space-y-3 bg-white border border-slate-200 rounded-3xl">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          <p className="text-xs text-slate-500">Đang chuẩn bị bộ thẻ Flashcards...</p>
+      {/* State: Loading Session Words */}
+      {isLoadingSession && (
+        <div className="p-8 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+          <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+          <p className="text-xs text-slate-500 font-medium">Đang chuẩn bị từ vựng mới cho bạn...</p>
         </div>
-      ) : queue.length > 0 ? (
-        /* Thẻ Flashcard tương tác */
-        <div className="space-y-6">
-          <div
-            onClick={() => setIsFlipped(!isFlipped)}
-            className="min-h-[280px] bg-white border-2 border-blue-200 hover:border-blue-400 rounded-3xl p-6 shadow-xl flex flex-col justify-between items-center text-center cursor-pointer transition-all duration-300 relative select-none"
+      )}
+
+      {/* State: Session Error */}
+      {!isLoadingSession && sessionErrorMessage && (
+        <div className="p-6 bg-white border border-slate-200 rounded-3xl text-center space-y-4 shadow-sm">
+          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900">Không thể bắt đầu</h3>
+            <p className="text-xs text-slate-500">{sessionErrorMessage}</p>
+          </div>
+          <button
+            onClick={handleExitSession}
+            className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl transition shadow-md"
           >
-            {/* Tag Level & Topic */}
-            <div className="w-full flex items-center justify-between text-xs text-slate-400">
-              <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 rounded-md font-bold">
-                {currentCard.level_tag || '500+'}
-              </span>
-              <span className="font-medium text-slate-500">{currentCard.topic || 'General'}</span>
-            </div>
-
-            {/* MẶT TRƯỚC / MẶT SAU */}
-            {!isFlipped ? (
-              <div className="space-y-2 my-auto">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">{currentCard.word}</h2>
-                <p className="text-xs text-blue-600 font-medium flex items-center justify-center gap-1">
-                  <RotateCw className="w-3.5 h-3.5" /> Nhấp vào thẻ để xem nghĩa
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 my-auto animate-fade-in">
-                <h3 className="text-2xl font-bold text-blue-600">{currentCard.meaning_vi}</h3>
-                {currentCard.example && (
-                  <p className="text-xs text-slate-600 italic bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    "{currentCard.example}"
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Hướng dẫn góc dưới */}
-            <span className="text-[11px] text-slate-400">
-              {isFlipped ? 'Chạm để lật về mặt trước' : 'Chạm để lật mặt sau'}
-            </span>
-          </div>
-
-          {/* Nút đánh giá: "Chưa nhớ" vs "Đã nhớ" */}
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={handleForget}
-              className="py-3.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2 shadow-sm"
-            >
-              <XCircle className="w-4 h-4 text-amber-600" />
-              <span>Chưa nhớ (Lặp lại)</span>
-            </button>
-
-            <button
-              onClick={handleRemember}
-              className="py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Đã nhớ</span>
-            </button>
-          </div>
+            Quay lại chọn chủ đề
+          </button>
         </div>
-      ) : (
-        /* Màn hình Hoàn thành phiên Flashcards */
-        <div className="p-8 bg-white border border-slate-200 rounded-3xl text-center space-y-6 shadow-xl">
-          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
-            <Trophy className="w-8 h-8" />
+      )}
+
+      {/* State: Không còn từ mới trong Topic */}
+      {!isLoadingSession && !sessionErrorMessage && sessionWords.length === 0 && (
+        <div className="p-8 bg-white border border-slate-200 rounded-3xl text-center space-y-4 shadow-sm">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+            <Award className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-black text-slate-900">Bạn đã học hết từ mới của chủ đề này 🎉</h3>
+            <p className="text-xs text-slate-500">
+              Tất cả từ vựng trong chủ đề {selectedTopic.displayName} đã được nạp vào lộ trình ghi nhớ của bạn.
+            </p>
+          </div>
+          <button
+            onClick={handleExitSession}
+            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow-md"
+          >
+            Chọn chủ đề khác
+          </button>
+        </div>
+      )}
+
+      {/* State: Hoàn thành phiên học từ mới */}
+      {isSessionCompleted && (
+        <div className="p-6 bg-white border border-slate-200 rounded-3xl text-center space-y-5 shadow-sm animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
 
           <div className="space-y-1">
-            <h2 className="text-2xl font-bold text-slate-900">Xuất sắc!</h2>
+            <h2 className="text-2xl font-black text-slate-900">Hoàn thành bài học từ mới!</h2>
             <p className="text-xs text-slate-500">
-              Bạn đã thuộc toàn bộ {totalCards} từ vựng trong phiên học này.
+              Đã nạp thành công <span className="font-bold text-slate-900">{sessionWords.length} từ vựng</span> vào Lịch ôn tập SRS (due ngày mai).
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={loadVocab}
-              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Học lại phiên này</span>
-            </button>
+          <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-xs text-emerald-900 font-semibold">
+            ✨ Bạn sẽ gặp lại các từ vựng này trong Phiên học Hằng ngày tại trang /today vào ngày mai!
+          </div>
 
-            <Link
-              href="/learn"
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl text-xs transition flex items-center justify-center"
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={handleExitSession}
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow-md"
             >
-              Về bài học
+              Học tiếp chủ đề khác
+            </button>
+            <Link
+              href="/today"
+              className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
+            >
+              <Home className="w-4 h-4" />
+              <span>Về trang chủ</span>
             </Link>
           </div>
         </div>
+      )}
+
+      {/* State: Đang trong tiến trình học (Intro hoặc Quiz) */}
+      {!isLoadingSession && !sessionErrorMessage && sessionWords.length > 0 && !isSessionCompleted && (
+        <>
+          {currentPhase === 'intro' ? (
+            <WordIntroCard
+              words={currentBatchWords}
+              batchIndex={currentBatchIndex}
+              totalBatches={totalBatches}
+              onFinishIntro={handleFinishIntroBatch}
+            />
+          ) : (
+            <VocabQuizEngine
+              params={{
+                mode: 'mixed',
+                count: currentBatchWords.length,
+                topic: selectedTopic.code,
+              }}
+              onFinish={handleFinishQuizBatch}
+            />
+          )}
+        </>
       )}
     </div>
   );

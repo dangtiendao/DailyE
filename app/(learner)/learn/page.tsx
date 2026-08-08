@@ -34,21 +34,21 @@ export default async function LearnPage() {
         </div>
       </header>
 
-      {/* Banner Nổi bật: Flashcards Từ vựng */}
+      {/* Banner Nổi bật: Học Từ vựng Active Recall */}
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl p-5 text-white shadow-lg space-y-3 relative overflow-hidden">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-100">Tính năng nổi bật</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-blue-100">Phương pháp học mới</span>
         </div>
-        <h2 className="text-xl font-extrabold tracking-tight">🃏 Flashcards Từ vựng TOEIC</h2>
+        <h2 className="text-xl font-extrabold tracking-tight">🧠 Học Từ vựng Active Recall theo Chủ đề</h2>
         <p className="text-xs text-blue-100 leading-relaxed max-w-sm">
-          Ôn tập từ vựng bằng phương pháp lật thẻ tương tác cực nhanh. Nhớ sâu từ vựng trọng tâm xuất hiện trong đề thi.
+          Ghi nhớ từ vựng chủ động với 3 dạng bài tập (Trắc nghiệm Anh-Việt, Việt-Anh & Ghép cặp). Tự động theo dõi tiến độ ghi nhớ theo từng chủ đề.
         </p>
         <Link
           href="/learn/vocabulary"
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-slate-100 text-blue-700 font-bold rounded-2xl text-xs transition shadow-md"
         >
-          <span>Lật thẻ ngay</span>
+          <span>Bắt đầu Học từ vựng ngay</span>
           <ArrowRight className="w-4 h-4" />
         </Link>
       </div>

@@ -138,7 +138,7 @@ export async function getTodayDashboardData(): Promise<TodayDashboardData> {
     .from('review_schedule')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .eq('item_type', 'vocabulary')
+    .in('item_type', ['vocab', 'vocabulary'])
     .lte('due_date', todayStr);
 
   // KHỐI 2: Bài học tiếp theo trong lộ trình (Bài xuất bản chưa hoàn thành)

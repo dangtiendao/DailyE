@@ -499,3 +499,307 @@ export async function commitExcelImport(
 
   return { success: true, count: validRows.length };
 }
+
+// ------------------------------------------------------------------------------
+// 5. PARSE & COMMIT EXCEL IMPORT TỪ VỰNG TOEIC
+// ------------------------------------------------------------------------------
+
+export interface ParsedVocabImportRow {
+  rowIndex: number;
+  word: string;
+  wordType: string;
+  meaningVi: string;
+  example: string;
+  exampleBlank: string | null;
+  topic: string;
+  levelTag: string;
+  audioUrl: string | null;
+  isValid: boolean;
+  isDbDuplicate?: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface ValidVocabRow {
+  word: string;
+  word_type: string;
+  meaning_vi: string;
+  example: string;
+  example_blank: string | null;
+  topic: string;
+  level_tag: string;
+  audio_url: string | null;
+  status: 'draft';
+}
+
+export async function parseVocabExcelImport(formData: FormData) {
+  const { supabase } = await checkAdminAuth();
+
+  const file = formData.get('file') as File;
+  if (!file) {
+    return { success: false, error: 'Vui lòng chọn file Excel / CSV' };
+  }
+
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const rawRows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+
+  if (!rawRows || rawRows.length === 0) {
+    return {
+      success: false,
+      error: 'File Excel/CSV rỗng, không tìm thấy dòng dữ liệu nào',
+    };
+  }
+
+  // 1. Lấy danh sách vocab_topics hợp lệ từ DB
+  const { data: dbTopics } = await supabase.from('vocab_topics').select('code');
+  const validTopicCodes = (dbTopics || []).map((t) => t.code.toLowerCase());
+
+  // 2. Lấy danh sách các cặp (word, word_type, topic) đã tồn tại trong DB
+  const { data: dbVocab } = await supabase.from('vocabulary_items').select('word, word_type, topic');
+  const dbVocabKeys = new Set(
+    (dbVocab || []).map((v) => `${v.word.trim().toLowerCase()}_${(v.word_type || '').toLowerCase()}_${v.topic.toLowerCase()}`)
+  );
+
+  const seenFileKeys = new Set<string>();
+  const validWordTypes = ['n', 'v', 'adj', 'adv', 'phrase'];
+  const validLevelTags = ['350+', '500+', '650+', '800+', 'A2', 'B1', 'B2', 'C1'];
+
+  const results: ParsedVocabImportRow[] = [];
+  const validRowsToInsert: ValidVocabRow[] = [];
+
+  rawRows.forEach((row, idx) => {
+    const rowIndex = idx + 2;
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Ép kiểu tất cả sang TEXT String
+    const word = String(row.word || '').trim();
+    const wordType = String(row.word_type || '').trim().toLowerCase();
+    const meaningVi = String(row.meaning_vi || '').trim();
+    const example = String(row.example || '').trim();
+    const exampleBlank = row.example_blank ? String(row.example_blank).trim() : null;
+    const topic = String(row.topic || '').trim().toLowerCase();
+    const levelTag = row.level_tag ? String(row.level_tag).trim() : '500+';
+    const audioUrl = row.audio_url ? String(row.audio_url).trim() : null;
+
+    // Validate Word
+    if (!word) {
+      errors.push('Từ vựng (word) không được để trống');
+    }
+
+    // Validate Word Type
+    if (!wordType || !validWordTypes.includes(wordType)) {
+      errors.push(`Loại từ (word_type) phải là một trong: ${validWordTypes.join(', ')}`);
+    }
+
+    // Validate Meaning Vi
+    if (!meaningVi) {
+      errors.push('Nghĩa tiếng Việt (meaning_vi) không được để trống');
+    }
+
+    // Validate Example & Warning if missing word
+    if (!example) {
+      errors.push('Câu ví dụ (example) không được để trống');
+    } else if (word && !example.toLowerCase().includes(word.toLowerCase())) {
+      warnings.push(`Câu ví dụ chưa chứa từ gốc "${word}"`);
+    }
+
+    // Validate Topic
+    if (!topic) {
+      errors.push('Chủ đề (topic) không được để trống');
+    } else if (!validTopicCodes.includes(topic)) {
+      // Gợi ý topic gần đúng
+      const closest = validTopicCodes.find((t) => t.includes(topic) || topic.includes(t)) || 'office';
+      errors.push(`Mã chủ đề "${topic}" không tồn tại. Gợi ý: "${closest}"`);
+    }
+
+    // Check trùng trong file
+    const fileKey = `${word.toLowerCase()}_${wordType}_${topic}`;
+    if (seenFileKeys.has(fileKey)) {
+      errors.push(`Từ vựng (${word}, ${wordType}, ${topic}) bị lặp lại trong file`);
+    } else {
+      seenFileKeys.add(fileKey);
+    }
+
+    // Check trùng với DB
+    const isDbDuplicate = dbVocabKeys.has(fileKey);
+    if (isDbDuplicate) {
+      warnings.push(`Từ vựng (${word}, ${wordType}, ${topic}) đã có trong Database`);
+    }
+
+    const isValid = errors.length === 0;
+
+    if (isValid) {
+      validRowsToInsert.push({
+        word,
+        word_type: wordType,
+        meaning_vi: meaningVi,
+        example,
+        example_blank: exampleBlank,
+        topic,
+        level_tag: levelTag,
+        audio_url: audioUrl,
+        status: 'draft',
+      });
+    }
+
+    results.push({
+      rowIndex,
+      word,
+      wordType,
+      meaningVi,
+      example,
+      exampleBlank,
+      topic,
+      levelTag,
+      audioUrl,
+      isValid,
+      isDbDuplicate,
+      errors,
+      warnings,
+    });
+  });
+
+  return {
+    success: true,
+    filename: file.name,
+    totalRows: rawRows.length,
+    validCount: validRowsToInsert.length,
+    invalidCount: rawRows.length - validRowsToInsert.length,
+    results,
+    validRowsToInsert,
+  };
+}
+
+export async function commitVocabExcelImport(
+  validRows: ValidVocabRow[],
+  filename: string
+) {
+  const { supabase, user } = await checkAdminAuth();
+
+  if (!validRows || validRows.length === 0) {
+    return { success: false, error: 'Không có dòng từ vựng hợp lệ nào để nhập' };
+  }
+
+  const { error: insertError } = await supabase
+    .from('vocabulary_items')
+    .upsert(validRows, { onConflict: 'word,word_type,topic' });
+
+  if (insertError) {
+    return { success: false, error: `Lỗi ghi từ vựng vào DB: ${insertError.message}` };
+  }
+
+  await supabase.from('content_imports').insert({
+    admin_id: user.id,
+    filename,
+    total_rows: validRows.length,
+    success_rows: validRows.length,
+    error_rows: 0,
+    error_detail: [],
+  });
+
+  return { success: true, count: validRows.length };
+}
+
+// ------------------------------------------------------------------------------
+// 6. VOCABULARY CRUD DISPATCHERS (CHO ADMIN CONTENT MANAGEMENT)
+// ------------------------------------------------------------------------------
+
+export async function getAdminVocabItems(filters?: { topic?: string; level?: string; status?: string }) {
+  const { supabase } = await checkAdminAuth();
+
+  let query = supabase
+    .from('vocabulary_items')
+    .select('*, vocab_topics(display_name)')
+    .order('created_at', { ascending: false });
+
+  if (filters?.topic && filters.topic !== 'all') {
+    query = query.eq('topic', filters.topic);
+  }
+  if (filters?.level && filters.level !== 'all') {
+    query = query.eq('level_tag', filters.level);
+  }
+  if (filters?.status && filters.status !== 'all') {
+    query = query.eq('status', filters.status);
+  }
+
+  const { data, error } = await query;
+  if (error) return { success: false, error: error.message };
+
+  return { success: true, items: data || [] };
+}
+
+export async function toggleVocabStatus(id: number, currentStatus: string) {
+  const { supabase } = await checkAdminAuth();
+
+  const newStatus = currentStatus === 'published' ? 'draft' : 'published';
+
+  const { error } = await supabase
+    .from('vocabulary_items')
+    .update({ status: newStatus })
+    .eq('id', id);
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, newStatus };
+}
+
+export async function upsertAdminVocabItem(itemData: {
+  id?: number;
+  word: string;
+  word_type: string;
+  meaning_vi: string;
+  example?: string;
+  example_blank?: string;
+  topic: string;
+  level_tag?: string;
+  status: 'draft' | 'published';
+}) {
+  const { supabase } = await checkAdminAuth();
+
+  if (itemData.id) {
+    const { error } = await supabase
+      .from('vocabulary_items')
+      .update({
+        word: itemData.word,
+        word_type: itemData.word_type,
+        meaning_vi: itemData.meaning_vi,
+        example: itemData.example || null,
+        example_blank: itemData.example_blank || null,
+        topic: itemData.topic,
+        level_tag: itemData.level_tag || '500+',
+        status: itemData.status,
+      })
+      .eq('id', itemData.id);
+
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase.from('vocabulary_items').insert({
+      word: itemData.word,
+      word_type: itemData.word_type,
+      meaning_vi: itemData.meaning_vi,
+      example: itemData.example || null,
+      example_blank: itemData.example_blank || null,
+      topic: itemData.topic,
+      level_tag: itemData.level_tag || '500+',
+      status: itemData.status,
+    });
+
+    if (error) return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function deleteAdminVocabItem(id: number) {
+  const { supabase } = await checkAdminAuth();
+
+  const { error } = await supabase.from('vocabulary_items').delete().eq('id', id);
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}

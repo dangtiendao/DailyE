@@ -10,6 +10,10 @@ import {
   getLessons,
   upsertLesson,
   deleteLesson,
+  getAdminVocabItems,
+  toggleVocabStatus,
+  upsertAdminVocabItem,
+  deleteAdminVocabItem,
   UpsertQuestionInput,
   UpsertLessonInput,
 } from '@/app/actions/admin';
@@ -26,12 +30,13 @@ import {
   XCircle,
   Loader2,
   ArrowLeft,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Trang Quản lý nội dung (Quản lý Câu hỏi TOEIC & Bài học Markdown)
 export default function AdminContentPage() {
-  const [activeTab, setActiveTab] = useState<'questions' | 'lessons'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'lessons' | 'vocab'>('questions');
 
   // Question State
   const [questions, setQuestions] = useState<any[]>([]);
@@ -52,7 +57,17 @@ export default function AdminContentPage() {
   const [isLessonsLoading, setIsLessonsLoading] = useState(true);
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<any | null>(null);
-  const [markdownPreview, setMarkdownPreview] = useState(false);
+
+  // Vocab State
+  const [vocabItems, setVocabItems] = useState<any[]>([]);
+  const [isVocabLoading, setIsVocabLoading] = useState(true);
+  const [vocabFilters, setVocabFilters] = useState({
+    topic: 'all',
+    level: 'all',
+    status: 'all',
+  });
+  const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
+  const [editingVocab, setEditingVocab] = useState<any | null>(null);
 
   // Tải danh sách câu hỏi
   const loadQuestions = async () => {
@@ -80,289 +95,262 @@ export default function AdminContentPage() {
     }
   };
 
+  // Tải danh sách từ vựng
+  const loadVocabItems = async () => {
+    setIsVocabLoading(true);
+    try {
+      const res = await getAdminVocabItems(vocabFilters);
+      if (res.success && res.items) {
+        setVocabItems(res.items);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsVocabLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'questions') {
       loadQuestions();
-    } else {
-      loadLessons();
-    }
-  }, [activeTab, filters.examPart, filters.status, filters.levelTag]);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    loadQuestions();
-  };
-
-  // Toggle Draft <-> Published
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
-    const res = await toggleQuestionStatus(id, currentStatus);
-    if (res.success) {
-      loadQuestions();
-    }
-  };
-
-  // Xóa câu hỏi
-  const handleDeleteQuestion = async (id: string, code: string) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa câu hỏi '${code}' không?`)) {
-      const res = await deleteQuestion(id);
-      if (res.success) {
-        loadQuestions();
-      }
-    }
-  };
-
-  // Lưu câu hỏi
-  const handleSaveQuestion = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const payload: UpsertQuestionInput = {
-      id: editingQuestion?.id,
-      code: String(formData.get('code') || '').trim(),
-      exam_part: (String(formData.get('exam_part') || 'part5') as UpsertQuestionInput['exam_part']),
-      question_text: String(formData.get('question_text') || '').trim(),
-      options: {
-        A: String(formData.get('optionA') || '').trim(),
-        B: String(formData.get('optionB') || '').trim(),
-        C: String(formData.get('optionC') || '').trim(),
-        D: String(formData.get('optionD') || '').trim(),
-      },
-      correct_answer: (String(formData.get('correct_answer') || 'A') as UpsertQuestionInput['correct_answer']),
-      explanation: String(formData.get('explanation') || '').trim() || null,
-      difficulty: (String(formData.get('difficulty') || 'medium') as UpsertQuestionInput['difficulty']),
-      status: (String(formData.get('status') || 'draft') as UpsertQuestionInput['status']),
-    };
-
-    const res = await upsertQuestion(payload);
-    if (res.success) {
-      setIsQuestionModalOpen(false);
-      setEditingQuestion(null);
-      loadQuestions();
-    } else {
-      alert(`Lỗi lưu câu hỏi: ${res.error}`);
-    }
-  };
-
-  // Lưu bài học
-  const handleSaveLesson = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const payload: UpsertLessonInput = {
-      id: editingLesson?.id,
-      title: String(formData.get('title') || '').trim(),
-      slug: String(formData.get('slug') || '').trim(),
-      skill: (String(formData.get('skill') || 'vocabulary') as UpsertLessonInput['skill']),
-      status: (String(formData.get('status') || 'draft') as UpsertLessonInput['status']),
-      content: String(formData.get('content') || '').trim(),
-    };
-
-    const res = await upsertLesson(payload);
-    if (res.success) {
-      setIsLessonModalOpen(false);
-      setEditingLesson(null);
+    } else if (activeTab === 'lessons') {
       loadLessons();
     } else {
-      alert(`Lỗi lưu bài học: ${res.error}`);
+      loadVocabItems();
+    }
+  }, [activeTab, filters.examPart, filters.status, filters.levelTag, vocabFilters.topic, vocabFilters.level, vocabFilters.status]);
+
+  // Toggle Status Vocab
+  const handleToggleVocabStatus = async (id: number, currentStatus: string) => {
+    const res = await toggleVocabStatus(id, currentStatus);
+    if (res.success) {
+      loadVocabItems();
     }
   };
 
-  // Xóa bài học
-  const handleDeleteLesson = async (id: string, title: string) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa bài học '${title}' không?`)) {
-      const res = await deleteLesson(id);
-      if (res.success) {
-        loadLessons();
-      }
+  // Delete Vocab
+  const handleDeleteVocab = async (id: number) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa từ vựng này khỏi hệ thống?')) return;
+    const res = await deleteAdminVocabItem(id);
+    if (res.success) {
+      loadVocabItems();
+    }
+  };
+
+  // Submit Vocab Form
+  const handleSaveVocab = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const itemData = {
+      id: editingVocab?.id,
+      word: String(formData.get('word') || ''),
+      word_type: String(formData.get('word_type') || 'n'),
+      meaning_vi: String(formData.get('meaning_vi') || ''),
+      example: String(formData.get('example') || ''),
+      example_blank: String(formData.get('example_blank') || ''),
+      topic: String(formData.get('topic') || 'office'),
+      level_tag: String(formData.get('level_tag') || '500+'),
+      status: String(formData.get('status') || 'draft') as 'draft' | 'published',
+    };
+
+    const res = await upsertAdminVocabItem(itemData);
+    if (res.success) {
+      setIsVocabModalOpen(false);
+      setEditingVocab(null);
+      loadVocabItems();
+    } else {
+      alert('Lỗi lưu từ vựng');
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 sm:p-6 space-y-6">
-      {/* Top Header */}
+    <div className="min-h-screen bg-slate-100 p-4 sm:p-6 space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <Link href="/admin/dashboard" className="text-xs text-slate-500 hover:underline inline-flex items-center gap-1 mb-1">
             <ArrowLeft className="w-3.5 h-3.5" /> Về Dashboard
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900">Quản lý nội dung</h1>
-          <p className="text-xs text-slate-500">Quản lý kho câu hỏi TOEIC và các bài học kiến thức</p>
+          <h1 className="text-2xl font-bold text-slate-900">Quản lý nội dung hệ thống</h1>
+          <p className="text-xs text-slate-500">Quản lý kho Câu hỏi TOEIC, Bài học Markdown và Từ vựng Active Recall</p>
         </div>
 
         <div className="flex items-center gap-2">
-          {activeTab === 'questions' ? (
+          {activeTab === 'questions' && (
             <button
               onClick={() => {
                 setEditingQuestion(null);
                 setIsQuestionModalOpen(true);
               }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-sm transition"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md transition"
             >
-              <Plus className="w-4 h-4" />
-              Thêm câu hỏi mới
+              <Plus className="w-4 h-4" /> Thêm câu hỏi mới
             </button>
-          ) : (
+          )}
+
+          {activeTab === 'vocab' && (
             <button
               onClick={() => {
-                setEditingLesson(null);
-                setIsLessonModalOpen(true);
+                setEditingVocab(null);
+                setIsVocabModalOpen(true);
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-sm transition"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md transition"
             >
-              <Plus className="w-4 h-4" />
-              Thêm bài học mới
+              <Plus className="w-4 h-4" /> Thêm từ vựng mới
             </button>
           )}
         </div>
       </header>
 
-      {/* Tabs Selection */}
-      <div className="flex border-b border-slate-200 gap-4">
+      {/* Tabs Header */}
+      <div className="flex border-b border-slate-200 gap-2">
         <button
           onClick={() => setActiveTab('questions')}
           className={cn(
-            'py-2.5 px-4 font-bold text-sm border-b-2 transition flex items-center gap-2',
+            'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'questions'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'border-blue-600 text-blue-600 bg-white rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           )}
         >
           <FileText className="w-4 h-4" />
-          <span>Kho câu hỏi</span>
+          <span>1. Câu hỏi TOEIC</span>
         </button>
 
         <button
           onClick={() => setActiveTab('lessons')}
           className={cn(
-            'py-2.5 px-4 font-bold text-sm border-b-2 transition flex items-center gap-2',
+            'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'lessons'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'border-blue-600 text-blue-600 bg-white rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           )}
         >
           <BookOpen className="w-4 h-4" />
-          <span>Bài học</span>
+          <span>2. Bài học Markdown</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('vocab')}
+          className={cn(
+            'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
+            activeTab === 'vocab'
+              ? 'border-indigo-600 text-indigo-600 bg-white rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          )}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>3. Từ vựng Active Recall</span>
         </button>
       </div>
 
-      {/* TAB 1: CÂU HỎI */}
-      {activeTab === 'questions' && (
+      {/* TAB 3: TỪ VỰNG ACTIVE RECALL */}
+      {activeTab === 'vocab' && (
         <div className="space-y-4">
-          {/* Thanh lọc & tìm kiếm */}
-          <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
-            <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-3">
-              <div className="flex-1 min-w-[200px] relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Tìm kiếm theo mã câu (code) hoặc nội dung..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
-                />
-              </div>
+          {/* Filters Bar */}
+          <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-700">
+              <Filter className="w-4 h-4 text-indigo-600" />
+              <span>Bộ lọc:</span>
+            </div>
 
-              <select
-                value={filters.examPart}
-                onChange={(e) => setFilters({ ...filters, examPart: e.target.value })}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
-              >
-                <option value="all">Tất cả Part</option>
-                <option value="part1">Part 1</option>
-                <option value="part2">Part 2</option>
-                <option value="part3">Part 3</option>
-                <option value="part4">Part 4</option>
-                <option value="part5">Part 5</option>
-                <option value="part6">Part 6</option>
-                <option value="part7">Part 7</option>
-              </select>
+            {/* Filter Topic */}
+            <select
+              value={vocabFilters.topic}
+              onChange={(e) => setVocabFilters({ ...vocabFilters, topic: e.target.value })}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+            >
+              <option value="all">Tất cả chủ đề</option>
+              <option value="office">🏢 Office</option>
+              <option value="hr">👥 HR</option>
+              <option value="finance">💰 Finance</option>
+              <option value="marketing">📢 Marketing</option>
+              <option value="travel">✈️ Travel</option>
+            </select>
 
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="draft">Nháp (Draft)</option>
-                <option value="published">Đã đăng (Published)</option>
-              </select>
+            {/* Filter Level */}
+            <select
+              value={vocabFilters.level}
+              onChange={(e) => setVocabFilters({ ...vocabFilters, level: e.target.value })}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+            >
+              <option value="all">Tất cả Level</option>
+              <option value="350+">350+</option>
+              <option value="500+">500+</option>
+              <option value="650+">650+</option>
+              <option value="800+">800+</option>
+            </select>
 
-              <button
-                type="submit"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold"
-              >
-                Lọc dữ liệu
-              </button>
-            </form>
+            {/* Filter Status */}
+            <select
+              value={vocabFilters.status}
+              onChange={(e) => setVocabFilters({ ...vocabFilters, status: e.target.value })}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+            >
+              <option value="all">Tất cả Trạng thái</option>
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+            </select>
           </div>
 
-          {/* Bảng danh sách câu hỏi */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            {isQuestionsLoading ? (
-              <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                <span>Đang tải danh sách câu hỏi...</span>
-              </div>
-            ) : questions.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">
-                Không tìm thấy câu hỏi nào phù hợp với bộ lọc.
-              </div>
-            ) : (
+          {/* Vocab Table */}
+          {isVocabLoading ? (
+            <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+              <p className="text-xs text-slate-500">Đang nạp danh sách từ vựng...</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-slate-500">
+                  <thead className="bg-slate-50 border-b text-[11px] font-bold uppercase text-slate-500">
                     <tr>
-                      <th className="p-3.5">Mã câu</th>
-                      <th className="p-3.5">Part</th>
-                      <th className="p-3.5">Nội dung câu hỏi</th>
-                      <th className="p-3.5">Đáp án đúng</th>
-                      <th className="p-3.5">Trạng thái</th>
-                      <th className="p-3.5 text-right">Thao tác</th>
+                      <th className="p-3">Từ vựng (Word)</th>
+                      <th className="p-3">Loại từ</th>
+                      <th className="p-3">Nghĩa tiếng Việt</th>
+                      <th className="p-3">Ví dụ</th>
+                      <th className="p-3">Chủ đề</th>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Trạng thái</th>
+                      <th className="p-3 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {questions.map((q) => (
-                      <tr key={q.id} className="hover:bg-slate-50 transition">
-                        <td className="p-3.5 font-bold text-slate-900">{q.code}</td>
-                        <td className="p-3.5">
-                          <span className="uppercase px-2 py-0.5 bg-slate-100 text-slate-700 rounded font-semibold text-[11px]">
-                            {q.exam_part}
-                          </span>
-                        </td>
-                        <td className="p-3.5 max-w-md truncate">{q.question_text}</td>
-                        <td className="p-3.5 font-bold text-blue-600">{q.correct_answer}</td>
-                        <td className="p-3.5">
+                    {vocabItems.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3 font-extrabold text-slate-900">{item.word}</td>
+                        <td className="p-3 font-bold text-indigo-600">({item.word_type})</td>
+                        <td className="p-3 font-medium">{item.meaning_vi}</td>
+                        <td className="p-3 max-w-xs truncate text-slate-500 italic">{item.example}</td>
+                        <td className="p-3 font-mono">{item.topic}</td>
+                        <td className="p-3">{item.level_tag}</td>
+                        <td className="p-3">
                           <button
-                            onClick={() => handleToggleStatus(q.id, q.status)}
+                            onClick={() => handleToggleVocabStatus(item.id, item.status)}
                             className={cn(
-                              'px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 transition',
-                              q.status === 'published'
-                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                              'px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1',
+                              item.status === 'published'
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                             )}
                           >
-                            {q.status === 'published' ? (
-                              <>
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Published
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="w-3.5 h-3.5" /> Draft
-                              </>
-                            )}
+                            {item.status === 'published' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                            <span>{item.status}</span>
                           </button>
                         </td>
-                        <td className="p-3.5 text-right space-x-2">
+                        <td className="p-3 text-right space-x-1">
                           <button
                             onClick={() => {
-                              setEditingQuestion(q);
-                              setIsQuestionModalOpen(true);
+                              setEditingVocab(item);
+                              setIsVocabModalOpen(true);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 rounded"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteQuestion(q.id, q.code)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 rounded"
+                            onClick={() => handleDeleteVocab(item.id)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -372,350 +360,128 @@ export default function AdminContentPage() {
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: BÀI HỌC */}
-      {activeTab === 'lessons' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          {isLessonsLoading ? (
-            <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
-              <span>Đang tải danh sách bài học...</span>
-            </div>
-          ) : lessons.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-xs">
-              Chưa có bài học nào trong hệ thống. Nhấn "Thêm bài học mới" để tạo.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50 border-b border-slate-200 font-semibold uppercase text-slate-500">
-                  <tr>
-                    <th className="p-3.5">Tiêu đề</th>
-                    <th className="p-3.5">Slug</th>
-                    <th className="p-3.5">Kỹ năng</th>
-                    <th className="p-3.5">Trạng thái</th>
-                    <th className="p-3.5 text-right">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {lessons.map((lesson) => (
-                    <tr key={lesson.id} className="hover:bg-slate-50 transition">
-                      <td className="p-3.5 font-bold text-slate-900">{lesson.title}</td>
-                      <td className="p-3.5 text-slate-500">{lesson.slug}</td>
-                      <td className="p-3.5">
-                        <span className="capitalize px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-semibold text-[11px]">
-                          {lesson.skill}
-                        </span>
-                      </td>
-                      <td className="p-3.5">
-                        <span
-                          className={cn(
-                            'px-2.5 py-0.5 rounded-full text-[11px] font-semibold',
-                            lesson.status === 'published'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-amber-100 text-amber-700'
-                          )}
-                        >
-                          {lesson.status}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right space-x-2">
-                        <button
-                          onClick={() => {
-                            setEditingLesson(lesson);
-                            setIsLessonModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-indigo-600 rounded"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
-                          className="p-1.5 text-slate-500 hover:text-red-600 rounded"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           )}
         </div>
       )}
 
-      {/* MODAL EDIT QUESTION */}
-      {isQuestionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-slate-900">
-              {editingQuestion ? `Sửa câu hỏi: ${editingQuestion.code}` : 'Thêm câu hỏi mới'}
-            </h2>
+      {/* MODAL EDIT/CREATE VOCAB ITEM */}
+      {isVocabModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xl max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-slate-900 text-base">
+                {editingVocab ? 'Chỉnh sửa Từ vựng' : 'Thêm Từ vựng mới'}
+              </h3>
+              <button onClick={() => setIsVocabModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold">
+                ✕
+              </button>
+            </div>
 
-            <form onSubmit={handleSaveQuestion} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Mã câu hỏi (Code)</label>
+            <form onSubmit={handleSaveVocab} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Từ vựng (word)</label>
                   <input
-                    type="text"
-                    name="code"
+                    name="word"
+                    defaultValue={editingVocab?.word || ''}
                     required
-                    defaultValue={editingQuestion?.code || ''}
-                    placeholder="P5-0001"
-                    className="w-full p-2.5 border border-slate-200 rounded-xl"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
                   />
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Part bài thi</label>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Loại từ (word_type)</label>
                   <select
-                    name="exam_part"
-                    defaultValue={editingQuestion?.exam_part || 'part5'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
+                    name="word_type"
+                    defaultValue={editingVocab?.word_type || 'n'}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    <option value="part1">Part 1</option>
-                    <option value="part2">Part 2</option>
-                    <option value="part3">Part 3</option>
-                    <option value="part4">Part 4</option>
-                    <option value="part5">Part 5</option>
-                    <option value="part6">Part 6</option>
-                    <option value="part7">Part 7</option>
+                    <option value="n">n (Danh từ)</option>
+                    <option value="v">v (Động từ)</option>
+                    <option value="adj">adj (Tính từ)</option>
+                    <option value="adv">adv (Phó từ)</option>
+                    <option value="phrase">phrase (Cụm từ)</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Nội dung câu hỏi</label>
-                <textarea
-                  name="question_text"
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700">Nghĩa tiếng Việt (meaning_vi)</label>
+                <input
+                  name="meaning_vi"
+                  defaultValue={editingVocab?.meaning_vi || ''}
                   required
-                  rows={3}
-                  defaultValue={editingQuestion?.question_text || ''}
-                  className="w-full p-2.5 border border-slate-200 rounded-xl"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Lựa chọn A</label>
-                  <input
-                    type="text"
-                    name="optionA"
-                    required
-                    defaultValue={editingQuestion?.options?.A || ''}
-                    className="w-full p-2 border border-slate-200 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Lựa chọn B</label>
-                  <input
-                    type="text"
-                    name="optionB"
-                    required
-                    defaultValue={editingQuestion?.options?.B || ''}
-                    className="w-full p-2 border border-slate-200 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Lựa chọn C</label>
-                  <input
-                    type="text"
-                    name="optionC"
-                    required
-                    defaultValue={editingQuestion?.options?.C || ''}
-                    className="w-full p-2 border border-slate-200 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Lựa chọn D</label>
-                  <input
-                    type="text"
-                    name="optionD"
-                    required
-                    defaultValue={editingQuestion?.options?.D || ''}
-                    className="w-full p-2 border border-slate-200 rounded-xl"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700">Ví dụ ngữ cảnh (example)</label>
+                <textarea
+                  name="example"
+                  defaultValue={editingVocab?.example || ''}
+                  rows={2}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Đáp án đúng</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Chủ đề</label>
                   <select
-                    name="correct_answer"
-                    defaultValue={editingQuestion?.correct_answer || 'A'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
+                    name="topic"
+                    defaultValue={editingVocab?.topic || 'office'}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="D">D</option>
+                    <option value="office">office</option>
+                    <option value="hr">hr</option>
+                    <option value="finance">finance</option>
+                    <option value="marketing">marketing</option>
+                    <option value="travel">travel</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Độ khó</label>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Level</label>
                   <select
-                    name="difficulty"
-                    defaultValue={editingQuestion?.difficulty || 'medium'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
+                    name="level_tag"
+                    defaultValue={editingVocab?.level_tag || '500+'}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    <option value="easy">Dễ (Easy)</option>
-                    <option value="medium">Vừa (Medium)</option>
-                    <option value="hard">Khó (Hard)</option>
+                    <option value="350+">350+</option>
+                    <option value="500+">500+</option>
+                    <option value="650+">650+</option>
+                    <option value="800+">800+</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Trạng thái</label>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Trạng thái</label>
                   <select
                     name="status"
-                    defaultValue={editingQuestion?.status || 'draft'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
+                    defaultValue={editingVocab?.status || 'draft'}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
                   >
-                    <option value="draft">Nháp (Draft)</option>
-                    <option value="published">Đã đăng (Published)</option>
+                    <option value="draft">draft</option>
+                    <option value="published">published</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">Lời giải chi tiết</label>
-                <textarea
-                  name="explanation"
-                  rows={2}
-                  defaultValue={editingQuestion?.explanation || ''}
-                  className="w-full p-2.5 border border-slate-200 rounded-xl"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t">
                 <button
                   type="button"
-                  onClick={() => setIsQuestionModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold"
+                  onClick={() => setIsVocabModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-md"
                 >
                   Lưu thay đổi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL EDIT LESSON */}
-      {isLessonModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-slate-900">
-              {editingLesson ? `Sửa bài học: ${editingLesson.title}` : 'Thêm bài học mới'}
-            </h2>
-
-            <form onSubmit={handleSaveLesson} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Tiêu đề bài học</label>
-                  <input
-                    type="text"
-                    name="title"
-                    required
-                    defaultValue={editingLesson?.title || ''}
-                    placeholder="Từ vựng TOEIC Chủ đề Marketing"
-                    className="w-full p-2.5 border border-slate-200 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Slug URL</label>
-                  <input
-                    type="text"
-                    name="slug"
-                    required
-                    defaultValue={editingLesson?.slug || ''}
-                    placeholder="tu-vung-marketing"
-                    className="w-full p-2.5 border border-slate-200 rounded-xl"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Kỹ năng</label>
-                  <select
-                    name="skill"
-                    defaultValue={editingLesson?.skill || 'vocabulary'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
-                  >
-                    <option value="vocabulary">Từ vựng (Vocabulary)</option>
-                    <option value="grammar">Ngữ pháp (Grammar)</option>
-                    <option value="listening">Lắng nghe (Listening)</option>
-                    <option value="reading">Đọc hiểu (Reading)</option>
-                    <option value="strategy">Chiến thuật làm bài (Strategy)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Trạng thái</label>
-                  <select
-                    name="status"
-                    defaultValue={editingLesson?.status || 'draft'}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-white"
-                  >
-                    <option value="draft">Nháp (Draft)</option>
-                    <option value="published">Đã đăng (Published)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Editor Markdown & Preview Tab */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block font-medium text-slate-700">Nội dung bài học (Markdown)</label>
-                  <button
-                    type="button"
-                    onClick={() => setMarkdownPreview(!markdownPreview)}
-                    className="text-indigo-600 hover:underline flex items-center gap-1 font-semibold"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    {markdownPreview ? 'Hiện Editor' : 'Xem trước Preview'}
-                  </button>
-                </div>
-
-                {!markdownPreview ? (
-                  <textarea
-                    name="content"
-                    required
-                    rows={8}
-                    defaultValue={editingLesson?.content || ''}
-                    placeholder="# Tiêu đề Markdown&#10;Nội dung kiến thức bài học..."
-                    className="w-full p-2.5 border border-slate-200 rounded-xl font-mono text-xs"
-                  />
-                ) : (
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[200px] whitespace-pre-wrap font-sans text-xs">
-                    {editingLesson?.content || 'Chưa có nội dung xem trước'}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLessonModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold"
-                >
-                  Lưu bài học
                 </button>
               </div>
             </form>

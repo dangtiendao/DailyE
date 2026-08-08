@@ -17,7 +17,9 @@ export type ContentStatus = 'draft' | 'published';
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export type TestType = 'mini' | 'part' | 'full';
 export type OptionKey = 'A' | 'B' | 'C' | 'D';
-export type ItemTypeSRS = 'question' | 'vocab';
+export type ItemTypeSRS = 'question' | 'vocab' | 'vocabulary';
+export type VocabWordType = 'n' | 'v' | 'adj' | 'adv' | 'phrase';
+export type VocabSessionMode = 'learn_new' | 'mcq_en_vi' | 'mcq_vi_en' | 'matching' | 'mixed' | 'review';
 
 export interface Database {
   public: {
@@ -383,35 +385,122 @@ export interface Database {
           updated_at?: string;
         };
       };
+      vocab_topics: {
+        Row: {
+          code: string;
+          display_name: string;
+          order_index: number;
+        };
+        Insert: {
+          code: string;
+          display_name: string;
+          order_index?: number;
+        };
+        Update: {
+          code?: string;
+          display_name?: string;
+          order_index?: number;
+        };
+      };
       vocabulary_items: {
         Row: {
-          id: string;
+          id: number;
           word: string;
+          word_type: VocabWordType | null;
           meaning_vi: string;
           example: string | null;
-          topic: string | null;
+          example_blank: string | null;
+          topic: string;
           level_tag: string | null;
           audio_url: string | null;
+          status: ContentStatus;
           created_at: string;
         };
         Insert: {
-          id?: string;
+          id?: number;
           word: string;
+          word_type?: VocabWordType | null;
           meaning_vi: string;
           example?: string | null;
-          topic?: string | null;
+          example_blank?: string | null;
+          topic: string;
           level_tag?: string | null;
           audio_url?: string | null;
+          status?: ContentStatus;
           created_at?: string;
         };
         Update: {
-          id?: string;
+          id?: number;
           word?: string;
+          word_type?: VocabWordType | null;
           meaning_vi?: string;
           example?: string | null;
-          topic?: string | null;
+          example_blank?: string | null;
+          topic?: string;
           level_tag?: string | null;
           audio_url?: string | null;
+          status?: ContentStatus;
+          created_at?: string;
+        };
+      };
+      user_vocab_progress: {
+        Row: {
+          id: number;
+          user_id: string;
+          vocab_id: number;
+          familiarity: number;
+          correct_streak: number;
+          total_correct: number;
+          total_wrong: number;
+          last_seen_at: string | null;
+        };
+        Insert: {
+          id?: number;
+          user_id: string;
+          vocab_id: number;
+          familiarity?: number;
+          correct_streak?: number;
+          total_correct?: number;
+          total_wrong?: number;
+          last_seen_at?: string | null;
+        };
+        Update: {
+          id?: number;
+          user_id?: string;
+          vocab_id?: number;
+          familiarity?: number;
+          correct_streak?: number;
+          total_correct?: number;
+          total_wrong?: number;
+          last_seen_at?: string | null;
+        };
+      };
+      vocab_sessions: {
+        Row: {
+          id: number;
+          user_id: string;
+          mode: VocabSessionMode;
+          total_items: number;
+          correct_items: number;
+          duration_seconds: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          user_id: string;
+          mode: VocabSessionMode;
+          total_items: number;
+          correct_items: number;
+          duration_seconds?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          user_id?: string;
+          mode?: VocabSessionMode;
+          total_items?: number;
+          correct_items?: number;
+          duration_seconds?: number | null;
           created_at?: string;
         };
       };
