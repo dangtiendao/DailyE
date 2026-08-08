@@ -174,6 +174,23 @@ export interface Database {
           order_index?: number;
         };
       };
+      lesson_progress: {
+        Row: {
+          user_id: string;
+          lesson_id: string;
+          completed_at: string;
+        };
+        Insert: {
+          user_id: string;
+          lesson_id: string;
+          completed_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          lesson_id?: string;
+          completed_at?: string;
+        };
+      };
       tests: {
         Row: {
           id: string;
