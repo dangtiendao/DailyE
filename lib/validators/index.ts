@@ -1,23 +1,30 @@
 import { z } from 'zod';
 
-// Zod schema kiểm tra thông tin Đăng nhập
+// Zod schema kiểm tra thông tin Đăng nhập (Yêu cầu mật khẩu tối thiểu 8 ký tự)
 export const loginSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
-  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 6 ký tự'),
+  password: z.string().min(8, 'Mật khẩu phải chứa ít nhất 8 ký tự'),
 });
 
 // Zod schema kiểm tra thông tin Đăng ký
 export const registerSchema = z.object({
   fullName: z.string().min(2, 'Họ và tên phải có ít nhất 2 ký tự'),
   email: z.string().email('Email không hợp lệ'),
-  password: z.string().min(6, 'Mật khẩu phải chứa ít nhất 6 ký tự'),
-  confirmPassword: z.string(),
+  password: z.string().min(8, 'Mật khẩu phải chứa ít nhất 8 ký tự'),
+  confirmPassword: z.string().min(8, 'Mật khẩu xác nhận phải có ít nhất 8 ký tự'),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Mật khẩu xác nhận không khớp',
   path: ['confirmPassword'],
 });
 
-// Zod schema mẫu cho việc Import dữ liệu câu hỏi từ Excel/CSV (dành cho Part 5, 6, 7)
+// Zod schema kiểm tra chọn Mục tiêu điểm TOEIC trong Onboarding
+export const onboardingSchema = z.object({
+  targetScore: z.coerce.number().refine((val) => [350, 500, 650, 800, 900].includes(val), {
+    message: 'Mục tiêu điểm không hợp lệ (Chọn 350, 500, 650, 800 hoặc 900)',
+  }),
+});
+
+// Zod schema mẫu cho việc Import dữ liệu câu hỏi từ Excel/CSV (Part 5, 6, 7)
 export const excelQuestionImportSchema = z.object({
   part: z.number().min(1).max(7),
   questionText: z.string().min(1, 'Nội dung câu hỏi không được để trống'),
@@ -33,4 +40,5 @@ export const excelQuestionImportSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type OnboardingInput = z.infer<typeof onboardingSchema>;
 export type ExcelQuestionImportInput = z.infer<typeof excelQuestionImportSchema>;
