@@ -179,7 +179,7 @@ export async function getQuestions(filters?: {
 }
 
 export async function toggleQuestionStatus(id: string, currentStatus: string) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const newStatus = currentStatus === "published" ? "draft" : "published";
 
@@ -192,11 +192,19 @@ export async function toggleQuestionStatus(id: string, currentStatus: string) {
     return { success: false, error: error.message };
   }
 
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: "single_update_status",
+    content_type: "questions",
+    affected_ids: [id],
+    payload: { newStatus },
+  });
+
   return { success: true, newStatus };
 }
 
 export async function deleteQuestion(id: string) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const { error } = await supabase.from("questions").delete().eq("id", id);
 
@@ -204,11 +212,19 @@ export async function deleteQuestion(id: string) {
     return { success: false, error: error.message };
   }
 
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: "single_delete",
+    content_type: "questions",
+    affected_ids: [id],
+    payload: {},
+  });
+
   return { success: true };
 }
 
 export async function upsertQuestion(inputData: UpsertQuestionInput) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const payload = {
     code: inputData.code,
@@ -237,6 +253,14 @@ export async function upsertQuestion(inputData: UpsertQuestionInput) {
     if (error) return { success: false, error: error.message };
   }
 
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: inputData.id ? "single_update" : "single_create",
+    content_type: "questions",
+    affected_ids: [inputData.id || inputData.code],
+    payload: { code: inputData.code, exam_part: inputData.exam_part },
+  });
+
   return { success: true };
 }
 
@@ -259,7 +283,7 @@ export async function getLessons() {
 }
 
 export async function upsertLesson(inputData: UpsertLessonInput) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const payload = {
     title: inputData.title,
@@ -283,17 +307,33 @@ export async function upsertLesson(inputData: UpsertLessonInput) {
     if (error) return { success: false, error: error.message };
   }
 
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: inputData.id ? "single_update" : "single_create",
+    content_type: "lessons",
+    affected_ids: [inputData.id || inputData.slug],
+    payload: { title: inputData.title, skill: inputData.skill },
+  });
+
   return { success: true };
 }
 
 export async function deleteLesson(id: string) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const { error } = await supabase.from("lessons").delete().eq("id", id);
 
   if (error) {
     return { success: false, error: error.message };
   }
+
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: "single_delete",
+    content_type: "lessons",
+    affected_ids: [id],
+    payload: {},
+  });
 
   return { success: true };
 }
@@ -735,7 +775,7 @@ export async function getAdminVocabItems(filters?: { topic?: string; level?: str
 }
 
 export async function toggleVocabStatus(id: number, currentStatus: string) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const newStatus = currentStatus === 'published' ? 'draft' : 'published';
 
@@ -745,6 +785,15 @@ export async function toggleVocabStatus(id: number, currentStatus: string) {
     .eq('id', id);
 
   if (error) return { success: false, error: error.message };
+
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: "single_update_status",
+    content_type: "vocabulary",
+    affected_ids: [id],
+    payload: { newStatus },
+  });
+
   return { success: true, newStatus };
 }
 
@@ -759,7 +808,7 @@ export async function upsertAdminVocabItem(itemData: {
   level_tag?: string;
   status: 'draft' | 'published';
 }) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   if (itemData.id) {
     const { error } = await supabase
@@ -792,14 +841,31 @@ export async function upsertAdminVocabItem(itemData: {
     if (error) return { success: false, error: error.message };
   }
 
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: itemData.id ? "single_update" : "single_create",
+    content_type: "vocabulary",
+    affected_ids: [itemData.id || itemData.word],
+    payload: { word: itemData.word, topic: itemData.topic },
+  });
+
   return { success: true };
 }
 
 export async function deleteAdminVocabItem(id: number) {
-  const { supabase } = await checkAdminAuth();
+  const { supabase, user } = await checkAdminAuth();
 
   const { error } = await supabase.from('vocabulary_items').delete().eq('id', id);
 
   if (error) return { success: false, error: error.message };
+
+  await supabase.from("admin_action_logs").insert({
+    admin_id: user.id,
+    action_type: "single_delete",
+    content_type: "vocabulary",
+    affected_ids: [id],
+    payload: {},
+  });
+
   return { success: true };
 }

@@ -18,6 +18,24 @@ import {
   UpsertLessonInput,
 } from '@/app/actions/admin';
 import {
+  bulkUpdateStatus,
+  bulkUpdateField,
+  bulkDelete,
+  ContentType,
+} from '@/lib/admin/bulk-actions';
+import {
+  BulkActionBar,
+} from '@/components/admin/bulk-actions/BulkActionBar';
+import {
+  BulkEditModal,
+} from '@/components/admin/bulk-actions/BulkEditModal';
+import {
+  BulkDeleteModal,
+} from '@/components/admin/bulk-actions/BulkDeleteModal';
+import {
+  BulkResultModal,
+} from '@/components/admin/bulk-actions/BulkResultModal';
+import {
   FileText,
   BookOpen,
   Search,
@@ -36,7 +54,24 @@ import {
 import { cn } from '@/lib/utils';
 
 export default function AdminContentPage() {
-  const [activeTab, setActiveTab] = useState<'questions' | 'lessons' | 'vocab'>('questions');
+  const [activeTab, setActiveTab] = useState<ContentType>('questions');
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+
+  // Bulk Modals state
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{
+    isOpen: boolean;
+    successCount: number;
+    failedItems: Array<{ id: string | number; reason: string }>;
+  }>({
+    isOpen: false,
+    successCount: 0,
+    failedItems: [],
+  });
 
   // Question State
   const [questions, setQuestions] = useState<any[]>([]);
@@ -68,6 +103,17 @@ export default function AdminContentPage() {
   });
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<any | null>(null);
+
+  // Reset selected IDs when switching tabs
+  const handleTabChange = (newTab: ContentType) => {
+    if (selectedIds.size > 0) {
+      if (!confirm('Bạn có danh sách mục đang được chọn. Đổi tab sẽ bỏ chọn các mục này. Tiếp tục?')) {
+        return;
+      }
+    }
+    setSelectedIds(new Set());
+    setActiveTab(newTab);
+  };
 
   // Tải danh sách câu hỏi
   const loadQuestions = async () => {
@@ -120,7 +166,32 @@ export default function AdminContentPage() {
     }
   }, [activeTab, filters.examPart, filters.status, filters.levelTag, vocabFilters.topic, vocabFilters.level, vocabFilters.status]);
 
-  // Toggle Status Vocab
+  // Handle single item status toggles
+  const handleToggleQuestionStatus = async (id: string, currentStatus: string) => {
+    const res = await toggleQuestionStatus(id, currentStatus);
+    if (res.success) loadQuestions();
+  };
+
+  const handleDeleteQuestion = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) return;
+    const res = await deleteQuestion(id);
+    if (res.success) {
+      loadQuestions();
+    } else {
+      alert(`Lỗi xóa câu hỏi: ${res.error}`);
+    }
+  };
+
+  const handleDeleteLesson = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa bài học này?')) return;
+    const res = await deleteLesson(id);
+    if (res.success) {
+      loadLessons();
+    } else {
+      alert(`Lỗi xóa bài học: ${res.error}`);
+    }
+  };
+
   const handleToggleVocabStatus = async (id: number, currentStatus: string) => {
     const res = await toggleVocabStatus(id, currentStatus);
     if (res.success) {
@@ -128,16 +199,16 @@ export default function AdminContentPage() {
     }
   };
 
-  // Delete Vocab
   const handleDeleteVocab = async (id: number) => {
     if (!confirm('Bạn có chắc chắn muốn xóa từ vựng này khỏi hệ thống?')) return;
     const res = await deleteAdminVocabItem(id);
     if (res.success) {
       loadVocabItems();
+    } else {
+      alert(`Lỗi xóa từ vựng: ${res.error}`);
     }
   };
 
-  // Submit Vocab Form
   const handleSaveVocab = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -163,8 +234,131 @@ export default function AdminContentPage() {
     }
   };
 
+  // ------------------------------------------------------------------------------
+  // SELECTION HELPERS FOR BULK ACTIONS
+  // ------------------------------------------------------------------------------
+  const getCurrentItems = (): Array<{ id: string | number; label: string }> => {
+    if (activeTab === 'questions') {
+      return questions.map((q) => ({ id: q.id, label: `${q.code || 'Q'} - ${q.question_text?.slice(0, 40)}...` }));
+    }
+    if (activeTab === 'lessons') {
+      return lessons.map((l) => ({ id: l.id, label: `${l.title} (${l.skill})` }));
+    }
+    return vocabItems.map((v) => ({ id: v.id, label: `${v.word} (${v.word_type}) - ${v.meaning_vi}` }));
+  };
+
+  const currentItems = getCurrentItems();
+  const currentItemIds = currentItems.map((i) => i.id);
+  const isAllCurrentSelected =
+    currentItemIds.length > 0 && currentItemIds.every((id) => selectedIds.has(id));
+
+  const handleToggleSelectAll = () => {
+    const next = new Set(selectedIds);
+    if (isAllCurrentSelected) {
+      currentItemIds.forEach((id) => next.delete(id));
+    } else {
+      // Giới hạn tối đa 100
+      currentItemIds.slice(0, 100).forEach((id) => next.add(id));
+    }
+    setSelectedIds(next);
+  };
+
+  const handleToggleSelectOne = (id: string | number) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      if (next.size >= 100) {
+        alert('Tối đa chỉ được chọn 100 bản ghi cùng lúc theo quy định hệ thống.');
+        return;
+      }
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  // ------------------------------------------------------------------------------
+  // BULK ACTION EXECUTORS
+  // ------------------------------------------------------------------------------
+  const refreshActiveData = () => {
+    if (activeTab === 'questions') loadQuestions();
+    else if (activeTab === 'lessons') loadLessons();
+    else loadVocabItems();
+  };
+
+  const handleExecuteBulkStatus = async (newStatus: 'published' | 'draft') => {
+    if (selectedIds.size === 0) return;
+    setIsBulkLoading(true);
+    try {
+      const res = await bulkUpdateStatus(activeTab, Array.from(selectedIds), newStatus);
+      if (res.success) {
+        refreshActiveData();
+        setSelectedIds(new Set());
+        setBulkResult({
+          isOpen: true,
+          successCount: res.success_count,
+          failedItems: res.failed,
+        });
+      } else {
+        alert(`Lỗi cập nhật trạng thái: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Lỗi: ${err.message}`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleExecuteBulkField = async (field: string, value: any) => {
+    if (selectedIds.size === 0) return;
+    setIsBulkLoading(true);
+    try {
+      const res = await bulkUpdateField(activeTab, Array.from(selectedIds), field, value);
+      if (res.success) {
+        refreshActiveData();
+        setSelectedIds(new Set());
+        setBulkResult({
+          isOpen: true,
+          successCount: res.success_count,
+          failedItems: res.failed,
+        });
+      } else {
+        alert(`Lỗi cập nhật trường dữ liệu: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Lỗi: ${err.message}`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleExecuteBulkDelete = async (deletableIds: Array<string | number>) => {
+    if (selectedIds.size === 0) return;
+    setIsBulkLoading(true);
+    try {
+      const res = await bulkDelete(activeTab, Array.from(selectedIds));
+      if (res.success) {
+        refreshActiveData();
+        setSelectedIds(new Set());
+        setBulkResult({
+          isOpen: true,
+          successCount: res.success_count,
+          failedItems: res.failed,
+        });
+      } else {
+        alert(`Lỗi xóa hàng loạt: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Lỗi: ${err.message}`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const selectedItemsPreviewList = currentItems.filter((item) => selectedIds.has(item.id));
+
   return (
-    <div className="min-h-screen bg-slate-100 p-4 sm:p-6 space-y-6 max-w-6xl mx-auto">
+    <div className="min-h-screen bg-slate-100 p-4 sm:p-6 space-y-6 max-w-6xl mx-auto pb-24">
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -188,7 +382,7 @@ export default function AdminContentPage() {
             </button>
           )}
 
-          {activeTab === 'vocab' && (
+          {activeTab === 'vocabulary' && (
             <button
               onClick={() => {
                 setEditingVocab(null);
@@ -205,7 +399,7 @@ export default function AdminContentPage() {
       {/* Tabs Header */}
       <div className="flex border-b border-slate-200 gap-2">
         <button
-          onClick={() => setActiveTab('questions')}
+          onClick={() => handleTabChange('questions')}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'questions'
@@ -214,11 +408,11 @@ export default function AdminContentPage() {
           )}
         >
           <FileText className="w-4 h-4" />
-          <span>1. Câu hỏi TOEIC</span>
+          <span>1. Câu hỏi TOEIC ({questions.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('lessons')}
+          onClick={() => handleTabChange('lessons')}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'lessons'
@@ -227,25 +421,232 @@ export default function AdminContentPage() {
           )}
         >
           <BookOpen className="w-4 h-4" />
-          <span>2. Bài học Markdown</span>
+          <span>2. Bài học Markdown ({lessons.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('vocab')}
+          onClick={() => handleTabChange('vocabulary')}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
-            activeTab === 'vocab'
+            activeTab === 'vocabulary'
               ? 'border-indigo-600 text-indigo-600 bg-white rounded-t-xl'
               : 'border-transparent text-slate-500 hover:text-slate-900'
           )}
         >
           <Sparkles className="w-4 h-4" />
-          <span>3. Từ vựng Active Recall</span>
+          <span>3. Từ vựng Active Recall ({vocabItems.length})</span>
         </button>
       </div>
 
+      {/* TAB 1: CÂU HỎI TOEIC */}
+      {activeTab === 'questions' && (
+        <div className="space-y-4">
+          {/* Filters Bar */}
+          <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-700">
+              <Filter className="w-4 h-4 text-blue-600" />
+              <span>Bộ lọc:</span>
+            </div>
+
+            <select
+              value={filters.examPart}
+              onChange={(e) => setFilters({ ...filters, examPart: e.target.value })}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+            >
+              <option value="all">Tất cả Part</option>
+              <option value="part1">Part 1</option>
+              <option value="part2">Part 2</option>
+              <option value="part3">Part 3</option>
+              <option value="part4">Part 4</option>
+              <option value="part5">Part 5</option>
+              <option value="part6">Part 6</option>
+              <option value="part7">Part 7</option>
+            </select>
+
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+            >
+              <option value="all">Tất cả Trạng thái</option>
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+            </select>
+
+            <div className="flex-1 min-w-[200px] relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Tìm mã hoặc nội dung câu hỏi..."
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Table Questions */}
+          {isQuestionsLoading ? (
+            <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto" />
+              <p className="text-xs text-slate-500">Đang nạp danh sách câu hỏi...</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b text-[11px] font-bold uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllCurrentSelected}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </th>
+                      <th className="p-3">Mã câu hỏi</th>
+                      <th className="p-3">Part</th>
+                      <th className="p-3">Nội dung câu hỏi</th>
+                      <th className="p-3">Độ khó</th>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Trạng thái</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {questions.map((q) => {
+                      const isSelected = selectedIds.has(q.id);
+                      return (
+                        <tr
+                          key={q.id}
+                          className={cn('hover:bg-slate-50/80 transition', isSelected && 'bg-blue-50/60')}
+                        >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectOne(q.id)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 font-mono font-bold text-slate-900">{q.code}</td>
+                          <td className="p-3 font-semibold text-blue-600 uppercase">{q.exam_part}</td>
+                          <td className="p-3 max-w-sm truncate text-slate-700 font-medium">{q.question_text}</td>
+                          <td className="p-3 capitalize">{q.difficulty || 'medium'}</td>
+                          <td className="p-3">{q.level_tag || '—'}</td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => handleToggleQuestionStatus(q.id, q.status)}
+                              className={cn(
+                                'px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1',
+                                q.status === 'published'
+                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                              )}
+                            >
+                              {q.status === 'published' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                              <span>{q.status}</span>
+                            </button>
+                          </td>
+                          <td className="p-3 text-right space-x-1">
+                            <button
+                              onClick={() => handleDeleteQuestion(q.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: BÀI HỌC MARKDOWN */}
+      {activeTab === 'lessons' && (
+        <div className="space-y-4">
+          {isLessonsLoading ? (
+            <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto" />
+              <p className="text-xs text-slate-500">Đang nạp danh sách bài học...</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b text-[11px] font-bold uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllCurrentSelected}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </th>
+                      <th className="p-3">Tiêu đề bài học</th>
+                      <th className="p-3">Kỹ năng</th>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Trạng thái</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lessons.map((lesson) => {
+                      const isSelected = selectedIds.has(lesson.id);
+                      return (
+                        <tr
+                          key={lesson.id}
+                          className={cn('hover:bg-slate-50/80 transition', isSelected && 'bg-blue-50/60')}
+                        >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectOne(lesson.id)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 font-bold text-slate-900">{lesson.title}</td>
+                          <td className="p-3 capitalize font-medium text-blue-600">{lesson.skill}</td>
+                          <td className="p-3">{lesson.level_tag || '—'}</td>
+                          <td className="p-3">
+                            <span
+                              className={cn(
+                                'px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1',
+                                lesson.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
+                              )}
+                            >
+                              {lesson.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => handleDeleteLesson(lesson.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TAB 3: TỪ VỰNG ACTIVE RECALL */}
-      {activeTab === 'vocab' && (
+      {activeTab === 'vocabulary' && (
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-wrap items-center gap-3 text-xs">
@@ -254,7 +655,6 @@ export default function AdminContentPage() {
               <span>Bộ lọc:</span>
             </div>
 
-            {/* Filter Topic */}
             <select
               value={vocabFilters.topic}
               onChange={(e) => setVocabFilters({ ...vocabFilters, topic: e.target.value })}
@@ -268,7 +668,6 @@ export default function AdminContentPage() {
               <option value="travel">✈️ Travel</option>
             </select>
 
-            {/* Filter Level */}
             <select
               value={vocabFilters.level}
               onChange={(e) => setVocabFilters({ ...vocabFilters, level: e.target.value })}
@@ -281,7 +680,6 @@ export default function AdminContentPage() {
               <option value="800+">800+</option>
             </select>
 
-            {/* Filter Status */}
             <select
               value={vocabFilters.status}
               onChange={(e) => setVocabFilters({ ...vocabFilters, status: e.target.value })}
@@ -305,6 +703,14 @@ export default function AdminContentPage() {
                 <table className="w-full text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 border-b text-[11px] font-bold uppercase text-slate-500">
                     <tr>
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllCurrentSelected}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </th>
                       <th className="p-3">Từ vựng (Word)</th>
                       <th className="p-3">Loại từ</th>
                       <th className="p-3">Nghĩa tiếng Việt</th>
@@ -316,47 +722,61 @@ export default function AdminContentPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {vocabItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                        <td className="p-3 font-extrabold text-slate-900">{item.word}</td>
-                        <td className="p-3 font-bold text-indigo-600">({item.word_type})</td>
-                        <td className="p-3 font-medium">{item.meaning_vi}</td>
-                        <td className="p-3 max-w-xs truncate text-slate-500 italic">{item.example}</td>
-                        <td className="p-3 font-mono">{item.topic}</td>
-                        <td className="p-3">{item.level_tag}</td>
-                        <td className="p-3">
-                          <button
-                            onClick={() => handleToggleVocabStatus(item.id, item.status)}
-                            className={cn(
-                              'px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1',
-                              item.status === 'published'
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                            )}
-                          >
-                            {item.status === 'published' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                            <span>{item.status}</span>
-                          </button>
-                        </td>
-                        <td className="p-3 text-right space-x-1">
-                          <button
-                            onClick={() => {
-                              setEditingVocab(item);
-                              setIsVocabModalOpen(true);
-                            }}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteVocab(item.id)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {vocabItems.map((item) => {
+                      const isSelected = selectedIds.has(item.id);
+                      return (
+                        <tr
+                          key={item.id}
+                          className={cn('hover:bg-slate-50/80 transition', isSelected && 'bg-indigo-50/60')}
+                        >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectOne(item.id)}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 font-extrabold text-slate-900">{item.word}</td>
+                          <td className="p-3 font-bold text-indigo-600">({item.word_type})</td>
+                          <td className="p-3 font-medium">{item.meaning_vi}</td>
+                          <td className="p-3 max-w-xs truncate text-slate-500 italic">{item.example}</td>
+                          <td className="p-3 font-mono">{item.topic}</td>
+                          <td className="p-3">{item.level_tag}</td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => handleToggleVocabStatus(item.id, item.status)}
+                              className={cn(
+                                'px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1',
+                                item.status === 'published'
+                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                              )}
+                            >
+                              {item.status === 'published' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                              <span>{item.status}</span>
+                            </button>
+                          </td>
+                          <td className="p-3 text-right space-x-1">
+                            <button
+                              onClick={() => {
+                                setEditingVocab(item);
+                                setIsVocabModalOpen(true);
+                              }}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteVocab(item.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -364,6 +784,46 @@ export default function AdminContentPage() {
           )}
         </div>
       )}
+
+      {/* FLOATING BULK ACTION BAR */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        contentType={activeTab}
+        isLoading={isBulkLoading}
+        onClearSelection={() => setSelectedIds(new Set())}
+        onUpdateStatus={handleExecuteBulkStatus}
+        onOpenEditModal={() => setIsBulkEditOpen(true)}
+        onOpenDeleteModal={() => setIsBulkDeleteOpen(true)}
+      />
+
+      {/* BULK EDIT FIELD MODAL */}
+      <BulkEditModal
+        isOpen={isBulkEditOpen}
+        selectedCount={selectedIds.size}
+        contentType={activeTab}
+        isLoading={isBulkLoading}
+        onClose={() => setIsBulkEditOpen(false)}
+        onSubmit={handleExecuteBulkField}
+      />
+
+      {/* BULK DELETE SAFETY MODAL */}
+      <BulkDeleteModal
+        isOpen={isBulkDeleteOpen}
+        selectedIds={Array.from(selectedIds)}
+        selectedItemsPreview={selectedItemsPreviewList}
+        contentType={activeTab}
+        isLoading={isBulkLoading}
+        onClose={() => setIsBulkDeleteOpen(false)}
+        onConfirmDelete={handleExecuteBulkDelete}
+      />
+
+      {/* BULK RESULT FEEDBACK MODAL */}
+      <BulkResultModal
+        isOpen={bulkResult.isOpen}
+        successCount={bulkResult.successCount}
+        failedItems={bulkResult.failedItems}
+        onClose={() => setBulkResult({ ...bulkResult, isOpen: false })}
+      />
 
       {/* MODAL EDIT/CREATE VOCAB ITEM */}
       {isVocabModalOpen && (

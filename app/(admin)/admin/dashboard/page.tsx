@@ -1,9 +1,10 @@
 import React from 'react';
 import Link from 'next/link';
 import { getAdminDashboardStats, DashboardStatsResult } from '@/app/actions/admin';
-import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { getAdminActionLogs } from '@/lib/admin/bulk-actions';
+import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck, Sparkles, History } from 'lucide-react';
 
-// Trang Admin Dashboard kết nối Server Action lấy thống kê thực tế
+// Trang Admin Dashboard kết nối Server Action lấy thống kê thực tế & 5 nhật ký gần nhất
 export default async function AdminDashboardPage() {
   let stats: DashboardStatsResult = {
     totalQuestions: 0,
@@ -12,12 +13,34 @@ export default async function AdminDashboardPage() {
     latestImport: null,
   };
   let fetchError = null;
+  let recentLogs: any[] = [];
 
   try {
     stats = await getAdminDashboardStats();
+    const logsRes = await getAdminActionLogs({ limit: 5 });
+    if (logsRes.success) {
+      recentLogs = logsRes.logs;
+    }
   } catch (err) {
     fetchError = (err as Error).message || 'Lỗi tải thống kê';
   }
+
+  const getActionBadge = (actionType: string) => {
+    switch (actionType) {
+      case 'bulk_delete':
+        return <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full font-bold text-[10px]">Bulk Delete</span>;
+      case 'single_delete':
+        return <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full font-bold text-[10px]">Delete</span>;
+      case 'bulk_update_status':
+        return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">Bulk Status</span>;
+      case 'single_update_status':
+        return <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-[10px]">Status</span>;
+      case 'bulk_update_field':
+        return <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">Bulk Edit</span>;
+      default:
+        return <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full font-bold text-[10px]">{actionType}</span>;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6 space-y-6">
@@ -30,7 +53,14 @@ export default async function AdminDashboardPage() {
           </div>
           <p className="text-xs text-slate-500 mt-0.5">Tổng quan thống kê hệ thống & quản trị nội dung DailyE</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/admin/logs"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-md transition"
+          >
+            <History className="w-4 h-4 text-indigo-400" />
+            Lịch sử thao tác
+          </Link>
           <Link
             href="/admin/vocab-test"
             className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"
@@ -104,39 +134,81 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Lượt Import gần nhất */}
-      <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-slate-400" />
-            <h2 className="font-bold text-slate-900 text-base">Lượt Import gần nhất</h2>
+      {/* Grid 2 cột: Import gần nhất & Thao tác gần đây */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Lượt Import gần nhất */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-400" />
+              <h2 className="font-bold text-slate-900 text-base">Lượt Import gần nhất</h2>
+            </div>
+            <Link href="/admin/import" className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1">
+              <span>Tới trang Import</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <Link href="/admin/import" className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1">
-            <span>Tới trang Import</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
 
-        {stats.latestImport ? (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="font-bold text-slate-800 text-sm">{stats.latestImport.filename}</p>
-              <p className="text-xs text-slate-500">
-                Thời gian: {new Date(stats.latestImport.created_at).toLocaleString('vi-VN')}
-              </p>
+          {stats.latestImport ? (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="font-bold text-slate-800 text-sm">{stats.latestImport.filename}</p>
+                <p className="text-xs text-slate-500">
+                  Thời gian: {new Date(stats.latestImport.created_at).toLocaleString('vi-VN')}
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-semibold">
+                  Thành công: {stats.latestImport.success_rows} / {stats.latestImport.total_rows} dòng
+                </span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-semibold">
-                Thành công: {stats.latestImport.success_rows} / {stats.latestImport.total_rows} dòng
-              </span>
+          ) : (
+            <div className="text-center py-6 text-slate-400 text-xs">
+              Chưa có lượt import file Excel nào gần đây.
             </div>
+          )}
+        </section>
+
+        {/* Thao tác gần đây (5 Logs mới nhất) */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-indigo-600" />
+              <h2 className="font-bold text-slate-900 text-base">Thao tác Admin gần đây</h2>
+            </div>
+            <Link href="/admin/logs" className="text-xs font-semibold text-indigo-600 hover:underline flex items-center gap-1">
+              <span>Xem tất cả lịch sử</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-        ) : (
-          <div className="text-center py-6 text-slate-400 text-xs">
-            Chưa có lượt import file Excel nào gần đây.
-          </div>
-        )}
-      </section>
+
+          {recentLogs && recentLogs.length > 0 ? (
+            <div className="space-y-2.5">
+              {recentLogs.map((log) => (
+                <div key={log.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      {getActionBadge(log.action_type)}
+                      <span className="font-semibold capitalize text-slate-700">{log.content_type}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      {new Date(log.created_at).toLocaleString('vi-VN')}
+                    </p>
+                  </div>
+                  <div className="text-right font-mono font-bold text-slate-800">
+                    {Array.isArray(log.affected_ids) ? log.affected_ids.length : 0} mục
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-slate-400 text-xs">
+              Chưa có nhật ký thao tác nào được ghi nhận.
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

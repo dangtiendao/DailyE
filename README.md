@@ -49,10 +49,12 @@ DailyE là nền tảng webapp học kiến thức và luyện thi TOEIC tối �
    - Gộp đủ 2 nguồn dữ liệu lỗi sai (TOEIC `error_logs` + Từ vựng `user_vocab_progress`).
    - Biểu đồ 14 ngày gần nhất phân biệt rõ số câu đúng TOEIC vs Từ vựng.
    - Trích xuất Top 3 chủ điểm TOEIC yếu nhất (< 60% accuracy) và Top 5 từ vựng hay sai nhất kèm nút *"Ôn ngay"*.
-7. **Quản trị Admin (CMS & Import)**:
-   - Bảng điều khiển Admin Dashboard (`/admin/dashboard`).
+7. **Quản trị Admin (CMS, Import & Audit Logs)**:
+   - Bảng điều khiển Admin Dashboard (`/admin/dashboard`): Thống kê tổng quan & hiển thị 5 thao tác Admin mới nhất.
    - Công cụ kiểm thử Vocab Engine dành riêng cho Admin (`/admin/vocab-test`).
-   - Quản lý nội dung (`/admin/content`): Bảng câu hỏi TOEIC, Bài học Markdown, và Bảng từ vựng Active Recall (lọc theo topic/level/status, chỉnh sửa nhanh, đổi status draft ↔ published).
+   - Quản lý nội dung (`/admin/content`): Bảng câu hỏi TOEIC, Bài học Markdown, và Bảng từ vựng Active Recall.
+   - **Thao tác hàng loạt (Bulk Actions)** *(Phase 5C)*: Select multi/header all, đổi trạng thái Published ↔ Draft hàng loạt, sửa trường metadata theo Whitelist có Zod preview, xóa hàng loạt 2 lớp xác nhận với cơ chế Policy A bảo vệ bản ghi đã có dữ liệu học viên.
+   - **Lịch sử thao tác Admin (`/admin/logs`)** *(Phase 5C)*: Xem toàn bộ nhật ký ghi vết thao tác thêm, sửa, xóa (bulk & single) của Admin kèm phân trang, lọc theo action/content type và xem payload JSON detail.
    - **Import Excel / CSV hàng loạt (`/admin/import`)**:
      - Tab 1: Import Câu hỏi TOEIC.
      - Tab 2: Import Từ vựng TOEIC (Zod validation preview dòng Xanh/Vàng/Đỏ, kiểm tra mã topic closed danh mục, chống trùng lặp `(word, word_type, topic)`).
@@ -164,7 +166,8 @@ DailyE/
 │   │   ├── 001_init.sql             # 12 bảng cơ bản, triggers & safe view
 │   │   ├── 002_lesson_progress.sql  # Tiến độ bài học
 │   │   ├── 003_srs_and_streak.sql   # SRS & Streak
-│   │   └── 004_vocab_system.sql     # Hệ thống Từ vựng Active Recall (vocab_topics, RLS)
+│   │   ├── 004_vocab_system.sql     # Hệ thống Từ vựng Active Recall (vocab_topics, RLS)
+│   │   └── 005_admin_action_logs.sql # Nhật ký thao tác Admin & RLS Security Policies
 │   └── scripts/                     # Các SQL Script tiện ích
 │       ├── reset_test_data.sql      # Script dọn sạch dữ liệu test (giữ admin/profiles)
 │       └── seed_vocab_test.sql       # Script chèn 25 từ vựng test cho 3 chủ đề
@@ -300,6 +303,20 @@ Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 12 mục quan trọn
 ---
 
 ## 📝 Nhật ký Thay đổi (Changelog)
+
+### Version 2.2.0 (2026-08-09) - Phase 5C: Bulk Actions Admin Content & Audit Logging
+- **Thao tác hàng loạt (Bulk Actions)** tại `/admin/content` áp dụng đồng bộ cho cả 3 tab (Câu hỏi, Bài học, Từ vựng):
+  - Checkbox chọn từng dòng + Checkbox header chọn toàn bộ bản ghi trên trang hiện tại (tối đa 100).
+  - Floating Bulk Action Bar với các tính năng: Đổi trạng thái (`draft` ↔ `published`), Sửa trường metadata theo Whitelist có Zod live preview, Xóa hàng loạt.
+  - **Chính sách xóa an toàn (Policy A)**: Rà soát an toàn trước khi xóa, tự động ngăn chặn xóa các bản ghi đã có lịch sử làm bài/học bài của học viên, hướng dẫn chuyển `status = 'draft'` để ẩn. Xác nhận 2 lớp bắt gõ số lượng chữ số để mở khóa nút xóa.
+- **Trang Nhật ký thao tác Admin (`/admin/logs`)**:
+  - Đọc từ bảng DB `admin_action_logs` (Migration `005_admin_action_logs.sql`).
+  - Hiển thị danh sách thao tác kèm badge phân loại màu sắc, thông tin Admin thực hiện, thời gian, số lượng bản ghi ảnh hưởng.
+  - Hỗ trợ lọc theo loại hành động, loại nội dung, phân trang 20 dòng/trang.
+  - Modal xem chi tiết payload JSONB & danh sách ID ảnh hưởng.
+  - Ghi log bổ sung cho cả các thao tác thêm, sửa, xóa đơn lẻ cũ.
+- **Nâng cấp Dashboard Admin (`/admin/dashboard`)**:
+  - Thêm thẻ *"Thao tác Admin gần đây"* hiển thị 5 log mới nhất và nút dẫn tới `/admin/logs`.
 
 ### Version 2.1.0 (2026-08-08) - Phase 5B: Active Recall Vocab Engine & Spaced Repetition System
 - **Nâng cấp Hệ thống Học từ vựng**: Thay thế toàn bộ component lật thẻ Flashcard thụ động cũ tại `/learn/vocabulary` bằng **Vocab Quiz Engine tương tác 2 chiều (Active Recall)**.
