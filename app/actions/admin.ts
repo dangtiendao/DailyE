@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
+import { getActiveTopics, getAllTopics, getActiveLevels } from "@/lib/taxonomy";
 
 // Định nghĩa các Interface TypeScript chuẩn cho dữ liệu Admin Actions
 export interface UpsertQuestionInput {
@@ -150,7 +151,7 @@ export async function getQuestions(filters?: {
 
   let query = supabase
     .from("questions")
-    .select("*")
+    .select("*, topics(display_name)")
     .order("created_at", { ascending: false });
 
   if (filters?.examPart && filters.examPart !== "all") {
@@ -384,6 +385,17 @@ export async function parseExcelImport(formData: FormData) {
   ];
   const validAnswers = ["A", "B", "C", "D"];
 
+  // 1. Lấy danh sách active topics & levels từ DB
+  const [activeTopics, allTopics, activeLevels] = await Promise.all([
+    getActiveTopics(),
+    getAllTopics(),
+    getActiveLevels(),
+  ]);
+
+  const activeTopicCodes = activeTopics.map((t) => t.code.toLowerCase());
+  const allTopicMap = new Map(allTopics.map((t) => [t.code.toLowerCase(), t]));
+  const validLevelCodes = activeLevels.map((l) => l.code);
+
   const results: ParsedImportRow[] = [];
   const validRowsToInsert: ValidQuestionRow[] = [];
 
@@ -408,7 +420,8 @@ export async function parseExcelImport(formData: FormData) {
     const knowledgeTagStr = row.knowledge_tag
       ? String(row.knowledge_tag).trim()
       : "";
-    const topic = row.topic ? String(row.topic).trim() : "";
+    const topic = row.topic ? String(row.topic).trim().toLowerCase() : "";
+    const levelTag = row.level_tag ? String(row.level_tag).trim() : null;
     const difficulty = row.difficulty
       ? String(row.difficulty).trim().toLowerCase()
       : "medium";
@@ -452,6 +465,22 @@ export async function parseExcelImport(formData: FormData) {
       errors.push(
         `Đáp án đúng '${correctAnswer}' không hợp lệ (Phải là A, B, C hoặc D)`,
       );
+    }
+
+    // Validate Level Tag động (nếu có truyền)
+    if (levelTag && !validLevelCodes.includes(levelTag)) {
+      errors.push(`Trình độ (level_tag) '${levelTag}' không hợp lệ hoặc đang bị ẩn. Các trình độ hợp lệ: ${validLevelCodes.join(', ')}`);
+    }
+
+    // Validate Topic động (cho phép ô trống NULL, nhưng nếu điền phải thuộc bảng topics và active)
+    if (topic) {
+      const topicObj = allTopicMap.get(topic);
+      if (!topicObj) {
+        const closest = activeTopicCodes.find((t) => t.includes(topic) || topic.includes(t)) || activeTopicCodes[0] || 'office';
+        errors.push(`Mã chủ đề '${topic}' không tồn tại. Gợi ý: '${closest}'`);
+      } else if (!topicObj.is_active) {
+        errors.push(`Chủ đề '${topicObj.display_name}' (${topic}) đang bị ẩn, hãy bật lại hoặc chọn chủ đề khác`);
+      }
     }
 
     // Warning cho Part 3 & Part 4 nếu thiếu audio_url (Giai đoạn text-only warning)
@@ -595,9 +624,16 @@ export async function parseVocabExcelImport(formData: FormData) {
     };
   }
 
-  // 1. Lấy danh sách vocab_topics hợp lệ từ DB
-  const { data: dbTopics } = await supabase.from('vocab_topics').select('code');
-  const validTopicCodes = (dbTopics || []).map((t) => t.code.toLowerCase());
+  // 1. Lấy danh sách topics & levels hợp lệ từ DB
+  const [activeTopics, allTopics, activeLevels] = await Promise.all([
+    getActiveTopics(),
+    getAllTopics(),
+    getActiveLevels(),
+  ]);
+
+  const activeTopicCodes = activeTopics.map((t) => t.code.toLowerCase());
+  const allTopicMap = new Map(allTopics.map((t) => [t.code.toLowerCase(), t]));
+  const validLevelCodes = activeLevels.map((l) => l.code);
 
   // 2. Lấy danh sách các cặp (word, word_type, topic) đã tồn tại trong DB
   const { data: dbVocab } = await supabase.from('vocabulary_items').select('word, word_type, topic');
@@ -607,7 +643,6 @@ export async function parseVocabExcelImport(formData: FormData) {
 
   const seenFileKeys = new Set<string>();
   const validWordTypes = ['n', 'v', 'adj', 'adv', 'phrase'];
-  const validLevelTags = ['350+', '500+', '650+', '800+', 'A2', 'B1', 'B2', 'C1'];
 
   const results: ParsedVocabImportRow[] = [];
   const validRowsToInsert: ValidVocabRow[] = [];
@@ -624,7 +659,7 @@ export async function parseVocabExcelImport(formData: FormData) {
     const example = String(row.example || '').trim();
     const exampleBlank = row.example_blank ? String(row.example_blank).trim() : null;
     const topic = String(row.topic || '').trim().toLowerCase();
-    const levelTag = row.level_tag ? String(row.level_tag).trim() : '500+';
+    const levelTag = row.level_tag ? String(row.level_tag).trim() : (validLevelCodes[0] || '500+');
     const audioUrl = row.audio_url ? String(row.audio_url).trim() : null;
 
     // Validate Word
@@ -649,13 +684,22 @@ export async function parseVocabExcelImport(formData: FormData) {
       warnings.push(`Câu ví dụ chưa chứa từ gốc "${word}"`);
     }
 
-    // Validate Topic
+    // Validate Level Tag động
+    if (row.level_tag && !validLevelCodes.includes(levelTag)) {
+      errors.push(`Trình độ (level_tag) "${row.level_tag}" không hợp lệ hoặc đang bị ẩn. Các trình độ hợp lệ: ${validLevelCodes.join(', ')}`);
+    }
+
+    // Validate Topic động (kiểm tra tồn tại và ẩn/hiện)
     if (!topic) {
       errors.push('Chủ đề (topic) không được để trống');
-    } else if (!validTopicCodes.includes(topic)) {
-      // Gợi ý topic gần đúng
-      const closest = validTopicCodes.find((t) => t.includes(topic) || topic.includes(t)) || 'office';
-      errors.push(`Mã chủ đề "${topic}" không tồn tại. Gợi ý: "${closest}"`);
+    } else {
+      const topicObj = allTopicMap.get(topic);
+      if (!topicObj) {
+        const closest = activeTopicCodes.find((t) => t.includes(topic) || topic.includes(t)) || activeTopicCodes[0] || 'office';
+        errors.push(`Mã chủ đề "${topic}" không tồn tại. Gợi ý: "${closest}"`);
+      } else if (!topicObj.is_active) {
+        errors.push(`Chủ đề "${topicObj.display_name}" (${topic}) đang bị ẩn, hãy bật lại hoặc chọn chủ đề khác`);
+      }
     }
 
     // Check trùng trong file

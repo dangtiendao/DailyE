@@ -53,8 +53,19 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+import { getAllTopics, getAllLevels, TopicItem, LevelItem } from '@/lib/taxonomy';
+
 export default function AdminContentPage() {
   const [activeTab, setActiveTab] = useState<ContentType>('questions');
+
+  // Dynamic Taxonomy State
+  const [adminTopics, setAdminTopics] = useState<TopicItem[]>([]);
+  const [adminLevels, setAdminLevels] = useState<LevelItem[]>([]);
+
+  useEffect(() => {
+    getAllTopics().then((res) => setAdminTopics(res)).catch(() => {});
+    getAllLevels().then((res) => setAdminLevels(res)).catch(() => {});
+  }, []);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
@@ -508,6 +519,7 @@ export default function AdminContentPage() {
                       <th className="p-3">Mã câu hỏi</th>
                       <th className="p-3">Part</th>
                       <th className="p-3">Nội dung câu hỏi</th>
+                      <th className="p-3">Chủ đề (Topic)</th>
                       <th className="p-3">Độ khó</th>
                       <th className="p-3">Level</th>
                       <th className="p-3">Trạng thái</th>
@@ -533,6 +545,7 @@ export default function AdminContentPage() {
                           <td className="p-3 font-mono font-bold text-slate-900">{q.code}</td>
                           <td className="p-3 font-semibold text-blue-600 uppercase">{q.exam_part}</td>
                           <td className="p-3 max-w-sm truncate text-slate-700 font-medium">{q.question_text}</td>
+                          <td className="p-3 text-slate-800 font-bold">{q.topics?.display_name || (q.topic ? q.topic : '—')}</td>
                           <td className="p-3 capitalize">{q.difficulty || 'medium'}</td>
                           <td className="p-3">{q.level_tag || '—'}</td>
                           <td className="p-3">
@@ -661,11 +674,11 @@ export default function AdminContentPage() {
               className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
             >
               <option value="all">Tất cả chủ đề</option>
-              <option value="office">🏢 Office</option>
-              <option value="hr">👥 HR</option>
-              <option value="finance">💰 Finance</option>
-              <option value="marketing">📢 Marketing</option>
-              <option value="travel">✈️ Travel</option>
+              {adminTopics.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.display_name} {!t.is_active ? '(Đã ẩn)' : ''}
+                </option>
+              ))}
             </select>
 
             <select
@@ -674,10 +687,11 @@ export default function AdminContentPage() {
               className="p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
             >
               <option value="all">Tất cả Level</option>
-              <option value="350+">350+</option>
-              <option value="500+">500+</option>
-              <option value="650+">650+</option>
-              <option value="800+">800+</option>
+              {adminLevels.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.display_name} {!l.is_active ? '(Đã ẩn)' : ''}
+                </option>
+              ))}
             </select>
 
             <select
@@ -802,6 +816,8 @@ export default function AdminContentPage() {
         selectedCount={selectedIds.size}
         contentType={activeTab}
         isLoading={isBulkLoading}
+        topics={adminTopics}
+        levels={adminLevels}
         onClose={() => setIsBulkEditOpen(false)}
         onSubmit={handleExecuteBulkField}
       />
@@ -891,14 +907,14 @@ export default function AdminContentPage() {
                   <label className="font-semibold text-slate-700">Chủ đề</label>
                   <select
                     name="topic"
-                    defaultValue={editingVocab?.topic || 'office'}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    defaultValue={editingVocab?.topic || (adminTopics[0]?.code || 'office')}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs"
                   >
-                    <option value="office">office</option>
-                    <option value="hr">hr</option>
-                    <option value="finance">finance</option>
-                    <option value="marketing">marketing</option>
-                    <option value="travel">travel</option>
+                    {adminTopics.map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.display_name} {!t.is_active ? '(Đã ẩn)' : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -906,13 +922,14 @@ export default function AdminContentPage() {
                   <label className="font-semibold text-slate-700">Level</label>
                   <select
                     name="level_tag"
-                    defaultValue={editingVocab?.level_tag || '500+'}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                    defaultValue={editingVocab?.level_tag || (adminLevels[0]?.code || '500+')}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs"
                   >
-                    <option value="350+">350+</option>
-                    <option value="500+">500+</option>
-                    <option value="650+">650+</option>
-                    <option value="800+">800+</option>
+                    {adminLevels.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {l.display_name} {!l.is_active ? '(Đã ẩn)' : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

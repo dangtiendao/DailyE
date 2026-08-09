@@ -9,114 +9,101 @@ interface BulkEditModalProps {
   selectedCount: number;
   contentType: ContentType;
   isLoading?: boolean;
+  topics?: Array<{ code: string; display_name: string; is_active?: boolean }>;
+  levels?: Array<{ code: string; display_name: string; is_active?: boolean }>;
   onClose: () => void;
   onSubmit: (field: string, value: any) => Promise<void>;
 }
-
-const FIELD_CONFIGS: Record<
-  ContentType,
-  Array<{ field: string; label: string; type: 'select' | 'text'; options?: Array<{ label: string; value: string }> }>
-> = {
-  questions: [
-    {
-      field: 'level_tag',
-      label: 'Level Tag (Trình độ)',
-      type: 'select',
-      options: [
-        { label: '350+', value: '350+' },
-        { label: '500+', value: '500+' },
-        { label: '650+', value: '650+' },
-        { label: '800+', value: '800+' },
-      ],
-    },
-    {
-      field: 'topic',
-      label: 'Chủ đề (Topic)',
-      type: 'text',
-    },
-    {
-      field: 'difficulty',
-      label: 'Độ khó (Difficulty)',
-      type: 'select',
-      options: [
-        { label: 'Dễ (Easy)', value: 'easy' },
-        { label: 'Trung bình (Medium)', value: 'medium' },
-        { label: 'Khó (Hard)', value: 'hard' },
-      ],
-    },
-  ],
-  lessons: [
-    {
-      field: 'level_tag',
-      label: 'Level Tag (Trình độ)',
-      type: 'select',
-      options: [
-        { label: '350+', value: '350+' },
-        { label: '500+', value: '500+' },
-        { label: '650+', value: '650+' },
-        { label: '800+', value: '800+' },
-      ],
-    },
-    {
-      field: 'skill',
-      label: 'Kỹ năng (Skill)',
-      type: 'select',
-      options: [
-        { label: 'Từ vựng (vocabulary)', value: 'vocabulary' },
-        { label: 'Ngữ pháp (grammar)', value: 'grammar' },
-        { label: 'Kỹ năng nghe (listening)', value: 'listening' },
-        { label: 'Kỹ năng đọc (reading)', value: 'reading' },
-        { label: 'Chiến thuật (strategy)', value: 'strategy' },
-      ],
-    },
-  ],
-  vocabulary: [
-    {
-      field: 'topic',
-      label: 'Chủ đề (Topic)',
-      type: 'select',
-      options: [
-        { label: '🏢 Văn phòng (office)', value: 'office' },
-        { label: '👥 Tuyển dụng & Nhân sự (hr)', value: 'hr' },
-        { label: '📋 Họp & Sự kiện (meeting)', value: 'meeting' },
-        { label: '💰 Tài chính & Ngân hàng (finance)', value: 'finance' },
-        { label: '📣 Marketing & Bán hàng (marketing)', value: 'marketing' },
-        { label: '✈️ Du lịch & Di chuyển (travel)', value: 'travel' },
-        { label: '🛒 Mua sắm & Dịch vụ (shopping)', value: 'shopping' },
-        { label: '🏭 Sản xuất & Vận chuyển (production)', value: 'production' },
-        { label: '💻 Công nghệ (technology)', value: 'technology' },
-        { label: '🏥 Sức khỏe (health)', value: 'health' },
-        { label: '🍽️ Nhà hàng & Ẩm thực (restaurant)', value: 'restaurant' },
-        { label: '🏠 Bất động sản (real_estate)', value: 'real_estate' },
-      ],
-    },
-    {
-      field: 'level_tag',
-      label: 'Level Tag (Trình độ)',
-      type: 'select',
-      options: [
-        { label: '350+', value: '350+' },
-        { label: '500+', value: '500+' },
-        { label: '650+', value: '650+' },
-        { label: '800+', value: '800+' },
-        { label: 'A2', value: 'A2' },
-        { label: 'B1', value: 'B1' },
-        { label: 'B2', value: 'B2' },
-        { label: 'C1', value: 'C1' },
-      ],
-    },
-  ],
-};
 
 export function BulkEditModal({
   isOpen,
   selectedCount,
   contentType,
   isLoading = false,
+  topics = [],
+  levels = [],
   onClose,
   onSubmit,
 }: BulkEditModalProps) {
-  const fields = FIELD_CONFIGS[contentType] || [];
+  const topicOptions = topics
+    .filter((t) => t.is_active !== false)
+    .map((t) => ({ label: t.display_name, value: t.code }));
+
+  const levelOptions = levels
+    .filter((l) => l.is_active !== false)
+    .map((l) => ({ label: l.display_name, value: l.code }));
+
+  const dynamicFieldConfigs: Record<
+    ContentType,
+    Array<{ field: string; label: string; type: 'select' | 'text'; options?: Array<{ label: string; value: string }> }>
+  > = {
+    questions: [
+      {
+        field: 'level_tag',
+        label: 'Level Tag (Trình độ)',
+        type: 'select',
+        options: levelOptions,
+      },
+      {
+        field: 'topic',
+        label: 'Chủ đề (Topic)',
+        type: 'select',
+        options: topicOptions,
+      },
+      {
+        field: 'difficulty',
+        label: 'Độ khó (Difficulty)',
+        type: 'select',
+        options: [
+          { label: 'Dễ (Easy)', value: 'easy' },
+          { label: 'Trung bình (Medium)', value: 'medium' },
+          { label: 'Khó (Hard)', value: 'hard' },
+        ],
+      },
+    ],
+    lessons: [
+      {
+        field: 'level_tag',
+        label: 'Level Tag (Trình độ)',
+        type: 'select',
+        options: levelOptions,
+      },
+      {
+        field: 'topic',
+        label: 'Chủ đề (Topic)',
+        type: 'select',
+        options: [{ label: '📂 Không có chủ đề (Chung)', value: '' }, ...topicOptions],
+      },
+      {
+        field: 'skill',
+        label: 'Kỹ năng (Skill)',
+        type: 'select',
+        options: [
+          { label: 'Từ vựng (vocabulary)', value: 'vocabulary' },
+          { label: 'Ngữ pháp (grammar)', value: 'grammar' },
+          { label: 'Kỹ năng nghe (listening)', value: 'listening' },
+          { label: 'Kỹ năng đọc (reading)', value: 'reading' },
+          { label: 'Chiến thuật (strategy)', value: 'strategy' },
+        ],
+      },
+    ],
+    vocabulary: [
+      {
+        field: 'topic',
+        label: 'Chủ đề (Topic)',
+        type: 'select',
+        options: topicOptions,
+      },
+      {
+        field: 'level_tag',
+        label: 'Level Tag (Trình độ)',
+        type: 'select',
+        options: levelOptions,
+      },
+    ],
+  };
+
+  const fields = dynamicFieldConfigs[contentType] || [];
   const [selectedField, setSelectedField] = useState<string>(fields[0]?.field || '');
   const [fieldValue, setFieldValue] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');

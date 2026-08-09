@@ -58,6 +58,11 @@ DailyE là nền tảng webapp học kiến thức và luyện thi TOEIC tối �
    - **Import Excel / CSV hàng loạt (`/admin/import`)**:
      - Tab 1: Import Câu hỏi TOEIC.
      - Tab 2: Import Từ vựng TOEIC (Zod validation preview dòng Xanh/Vàng/Đỏ, kiểm tra mã topic closed danh mục, chống trùng lặp `(word, word_type, topic)`).
+8. **Quản trị Taxonomy Hệ thống & Level Động (`/admin/taxonomy`)** *(Phase 5D)*:
+   - **Quản lý Chủ đề (Topics)**: Thêm mới, sửa tên hiển thị/mô tả/thứ tự, bật/tắt ẩn hiển thị (`is_active`). Xóa an toàn với đếm dữ liệu liên kết 3 bảng (`vocabulary_items`, `lessons`, `questions`) và công cụ di chuyển nội dung hàng loạt `moveTopicContent` chạy bằng SQL RPC Transaction.
+   - **Quản lý Trình độ (Levels)**: Quản lý động danh mục Trình độ (`350+`, `500+`, `650+`, `800+`, `900+`, ...), loại bỏ hoàn toàn các danh sách/enum hardcode trên toàn ứng dụng.
+   - **Single Source of Truth**: Đồng bộ động taxonomy cho toàn hệ thống (Import Excel, Bulk Actions, Form CMS Admin, Lọc Bài học `/learn`, Danh mục Từ vựng `/learn/vocabulary`, Form Luyện tập `/practice`).
+   - **Bảo toàn SRS đối với Topic Ẩn**: Khi Admin ẩn một Topic (`is_active = false`), từ vựng thuộc topic đó mà học viên đã nạp **vẫn xuất hiện và ôn tập bình thường** khi đến hạn SRS ở `/today` và các phiên quiz SRS.
 
 ### 🟡 SẮP CÓ (Backlog / Future Phases)
 
@@ -101,9 +106,12 @@ Hệ thống gồm 15 bảng chính trong schema `public`:
 └─────────────────┘       └─────────────────┘
 ```
 
-### Chi tiết các Bảng Từ vựng mới (Phase 5B):
-- **`vocab_topics`**: Danh mục 12 chủ đề từ vựng TOEIC (`office`, `hr`, `meeting`, `finance`, `marketing`, `travel`, `shopping`, `production`, `technology`, `health`, `restaurant`, `real_estate`).
-- **`vocabulary_items`**: Kho từ vựng với khóa chính `id BIGINT GENERATED ALWAYS AS IDENTITY`, `word`, `word_type` (`n`/`v`/`adj`/`adv`/`phrase`), `meaning_vi`, `example`, `example_blank`, `topic` (FK `vocab_topics.code`), `level_tag`, `status` (`draft`/`published`), ràng buộc `UNIQUE(word, word_type, topic)`.
+### Chi tiết các Bảng Taxonomy & Từ vựng mới (Phase 5D):
+- **`topics`** *(Nâng cấp từ `vocab_topics`)*: Danh mục chủ đề động (`code` PK, `display_name`, `description`, `order_index`, `is_active`, `created_at`).
+- **`levels`** *(Bảng mới Phase 5D)*: Danh mục trình độ động (`code` PK như `'350+'`, `'500+'`, `'650+'`, `'800+'`, `display_name`, `order_index`, `is_active`, `created_at`).
+- **`vocabulary_items`**: Kho từ vựng với `topic` (FK `topics.code`), `level_tag` (FK `levels.code`).
+- **`lessons`**: Bài học Markdown bổ sung `topic` (FK `topics.code` ON DELETE SET NULL, NULL = nhóm "Chung"), `level_tag` (FK `levels.code`).
+- **`questions`**: Câu hỏi TOEIC chuyển `topic` và `level_tag` thành FK liên kết động tới `topics.code` và `levels.code`.
 - **`user_vocab_progress`**: Tiến độ thuộc từ cá nhân (`user_id`, `vocab_id`, `familiarity` 0-3, `correct_streak`, `total_correct`, `total_wrong`, `last_seen_at`, `UNIQUE(user_id, vocab_id)`).
 - **`vocab_sessions`**: Nhật ký các phiên học từ vựng (`user_id`, `mode`, `total_items`, `correct_items`, `duration_seconds`, `created_at`).
 
@@ -126,6 +134,7 @@ DailyE/
 │   │       ├── content/page.tsx     # CMS Quản lý Câu hỏi, Bài học & Từ vựng Active Recall
 │   │       ├── dashboard/page.tsx   # Dashboard Thống kê tổng quan
 │   │       ├── import/page.tsx      # Tab Import Excel Câu hỏi & Import CSV Từ vựng
+│   │       ├── taxonomy/page.tsx    # Quản lý Taxonomy Hệ thống (Topics & Levels)
 │   │       └── vocab-test/page.tsx  # Công cụ thử nghiệm VocabQuizEngine dành cho Admin
 │   ├── (learner)/                  # Phân vùng Học viên
 │   │   ├── learn/
@@ -146,6 +155,11 @@ DailyE/
 │   │   ├── vocab_learn.ts           # Luồng học từ mới theo phiên 10 từ
 │   │   ├── srs.ts                   # Leitner algorithm & Today dashboard data
 │   │   └── progress.ts              # Aggregate user performance stats
+│   ├── lib/
+│   │   ├── taxonomy.ts              # Single Source of Truth Taxonomy Service
+│   │   └── admin/
+│   │       ├── taxonomy-actions.ts  # Admin Server Actions cho Topics & Levels CRUD
+│   │       └── bulk-actions.ts      # Server Actions thao tác hàng loạt
 │   ├── layout.tsx                   # Layout gốc & SEO Metadata
 │   └── page.tsx                     # Landing Page giới thiệu
 ├── components/
@@ -167,7 +181,9 @@ DailyE/
 │   │   ├── 002_lesson_progress.sql  # Tiến độ bài học
 │   │   ├── 003_srs_and_streak.sql   # SRS & Streak
 │   │   ├── 004_vocab_system.sql     # Hệ thống Từ vựng Active Recall (vocab_topics, RLS)
-│   │   └── 005_admin_action_logs.sql # Nhật ký thao tác Admin & RLS Security Policies
+│   │   ├── 005_admin_action_logs.sql # Nhật ký thao tác Admin & RLS Security Policies
+│   │   ├── 006_dynamic_taxonomy.sql # Dynamic Taxonomy (nâng cấp topics, bảng levels, FKs)
+│   │   └── 007_move_topic_content_rpc.sql # PL/pgSQL Stored Procedure di chuyển data trong SQL Transaction
 │   └── scripts/                     # Các SQL Script tiện ích
 │       ├── reset_test_data.sql      # Script dọn sạch dữ liệu test (giữ admin/profiles)
 │       └── seed_vocab_test.sql       # Script chèn 25 từ vựng test cho 3 chủ đề
@@ -210,11 +226,14 @@ Truy cập địa chỉ: `http://localhost:3000`
 
 Đăng nhập vào [Supabase Dashboard](https://supabase.com/dashboard) -> Chọn dự án của bạn -> Mở **SQL Editor** và thực hiện theo các bước:
 
-### Bước 1: Chạy 4 File Migrations theo đúng thứ tự
+### Bước 1: Chạy 7 File Migrations theo đúng thứ tự
 1. **`supabase/migrations/001_init.sql`**: Khởi tạo cấu trúc bảng chính, Trigger tự tạo Profile, RLS Policies và SAFE VIEW `published_questions_safe`.
 2. **`supabase/migrations/002_lesson_progress.sql`**: Khởi tạo bảng `lesson_progress` theo dõi tiến độ bài học.
 3. **`supabase/migrations/003_srs_and_streak.sql`**: Bổ sung theo dõi 2 lần đúng liên tiếp trong `error_logs`, chuỗi ngày học liên tiếp (`streak_count`) trong `profiles` và các chỉ mục Index.
 4. **`supabase/migrations/004_vocab_system.sql`**: Khởi tạo `vocab_topics` (seed 12 chủ đề), nâng cấp `vocabulary_items`, tạo `user_vocab_progress`, `vocab_sessions`, cập nhật constraint `review_schedule` và RLS policies.
+5. **`supabase/migrations/005_admin_action_logs.sql`**: Khởi tạo bảng `admin_action_logs` lưu vết nhật ký thao tác Admin.
+6. **`supabase/migrations/006_dynamic_taxonomy.sql`**: Nâng cấp `topics` động, tạo bảng `levels` động (seed 4 level), cập nhật ràng buộc FKs và RLS policies.
+7. **`supabase/migrations/007_move_topic_content_rpc.sql`**: Tạo PL/pgSQL Stored Procedure `public.move_topic_content` di chuyển dữ liệu trong SQL Transaction block.
 
 ### Bước 2: (Tùy chọn) Chạy Script Reset Dữ liệu Test & Seed Từ Vựng Mẫu
 - **`supabase/scripts/reset_test_data.sql`**: Dọn dẹp sạch dữ liệu mẫu thử nghiệm (*Lưu ý: CHỈ dùng khi muốn reset môi trường test, script sẽ giữ nguyên các tài khoản Admin/User trong `profiles`*).
@@ -241,6 +260,8 @@ Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ
 - `/admin/vocab-test`: Công cụ kiểm thử Vocab Engine live
 - `/admin/content`: Quản lý câu hỏi, bài học Markdown & Từ vựng Active Recall
 - `/admin/import`: Nhập liệu hàng loạt bằng file Excel/CSV (Tab Câu hỏi & Tab Từ vựng)
+- `/admin/taxonomy`: Quản lý Taxonomy Hệ thống (Chủ đề & Trình độ)
+- `/admin/logs`: Nhật ký thao tác Admin
 
 ---
 
@@ -254,7 +275,8 @@ Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ
    - `word_type`: Bắt buộc thuộc `n`, `v`, `adj`, `adv`, `phrase`.
    - `meaning_vi`: Bắt buộc.
    - `example`: Bắt buộc. Nếu câu ví dụ chưa chứa từ gốc -> Hiển thị **Cảnh báo vàng** (vẫn cho phép import).
-   - `topic`: Bắt buộc thuộc danh mục đóng 12 topic của `vocab_topics`. Nếu mã topic không tồn tại -> Hiển thị **Lỗi đỏ** kèm gợi ý mã gần đúng nhất.
+   - `topic`: Bắt buộc thuộc danh mục `topics` và `is_active = true`. Nếu mã topic không tồn tại -> Hiển thị **Lỗi đỏ** kèm gợi ý mã gần đúng. Nếu topic bị ẩn -> Báo lỗi đỏ không cho phép import.
+   - `level_tag`: Bắt buộc thuộc danh mục `levels` và `is_active = true`.
    - Trùng lặp `(word, word_type, topic)` trong file -> Hiển thị **Lỗi đỏ**.
    - Trùng lặp với Database -> Hiển thị **Cảnh báo vàng** (cho phép ghi đè/bỏ qua qua `upsert`).
 5. Bấm **"Nhập các dòng hợp lệ vào DB"**: Dữ liệu được lưu với `status = 'draft'`. Admin vào `/admin/content` -> Tab 3 đổi trạng thái thành `published` để từ vựng xuất hiện trong app.
@@ -303,6 +325,24 @@ Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 12 mục quan trọn
 ---
 
 ## 📝 Nhật ký Thay đổi (Changelog)
+
+### Version 2.3.0 (2026-08-09) - Phase 5D: Dynamic System Taxonomy & Level Engine
+- **Trang Quản trị Taxonomy (`/admin/taxonomy`)**:
+  - Tab 1: Quản lý Chủ đề (Topics) - Thêm mới, sửa tên hiển thị/mô tả/thứ tự, bật/tắt ẩn (`is_active`), đếm chính xác số lượng bản ghi liên kết ở 3 bảng (`vocabulary_items`, `lessons`, `questions`).
+  - Nút **"Chuyển nội dung"**: Di chuyển toàn bộ từ vựng, bài học, câu hỏi từ topic nguồn sang topic đích qua PostgreSQL Stored Procedure `public.move_topic_content` thực thi trong 1 **SQL Transaction block** với cơ chế ROLLBACK 100% khi lỗi.
+  - Tab 2: Quản lý Trình độ (Levels) - Thêm/sửa danh mục trình độ động (`350+`, `500+`, `650+`, `800+`, `900+`, ...).
+- **Single Source of Truth Taxonomy Service (`lib/taxonomy.ts`)**:
+  - Loại bỏ 100% các mảng/enum cứng hardcode trong toàn bộ dự án (`admin.ts`, `bulk-actions.ts`, `BulkEditModal.tsx`, `content/page.tsx`, `/learn`, `/practice`).
+  - Cung cấp các helper tập trung: `getActiveTopics()`, `getAllTopics()`, `getActiveLevels()`, `getAllLevels()`, `validateTopicCode()`, `validateLevelCode()`, `revalidateTaxonomyCache()`.
+- **Tích hợp Giao diện Học viên & Admin**:
+  - Trang `/learn`: Thêm bộ lọc Topic động phía trên danh sách bài học và Badge Topic trên từng thẻ bài học. Bài học chưa gắn topic được gom vào nhóm **"📂 Chung"**.
+  - Trang `/learn/vocabulary`: Nạp danh mục topic active tự động, ẩn các topic `is_active = false`.
+  - Trang `/today`: Bảo toàn tuyệt đối luồng ôn tập SRS — các từ vựng thuộc topic bị ẩn vẫn xuất hiện ôn tập bình thường khi đến hạn.
+  - Trang `/practice`: Nạp dropdown Topic và Level động vào form chọn Luyện từ vựng.
+  - Trang `/admin/content`: Bổ sung cột Chủ đề hiển thị `display_name` tiếng Việt kèm emoji cho bảng câu hỏi và trường chọn Topic cho bài học.
+- **Migrations mới**:
+  - `006_dynamic_taxonomy.sql`: Nâng cấp `topics`, tạo `levels`, ràng buộc FK `level_tag` & `topic`, cấu hình RLS policies.
+  - `007_move_topic_content_rpc.sql`: Khai báo PL/pgSQL Stored Procedure `move_topic_content`.
 
 ### Version 2.2.0 (2026-08-09) - Phase 5C: Bulk Actions Admin Content & Audit Logging
 - **Thao tác hàng loạt (Bulk Actions)** tại `/admin/content` áp dụng đồng bộ cho cả 3 tab (Câu hỏi, Bài học, Từ vựng):

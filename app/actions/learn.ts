@@ -9,6 +9,8 @@ export interface LessonWithProgress {
   content: string;
   skill: 'vocabulary' | 'grammar' | 'listening' | 'reading' | 'strategy';
   level_tag: string | null;
+  topic: string | null;
+  topic_display_name?: string | null;
   status: 'draft' | 'published';
   order_index: number;
   created_at: string;
@@ -32,17 +34,27 @@ export interface VocabularyFlashcardItem {
   audio_url: string | null;
 }
 
-// 1. Lấy danh sách bài học Published được phân nhóm theo Kỹ năng kèm trạng thái đã học của User
-export async function getPublishedLessonsWithProgress(): Promise<SkillGroupedLessons[]> {
+// 1. Lấy danh sách bài học Published được phân nhóm theo Kỹ năng kèm trạng thái đã học của User & bộ lọc Topic
+export async function getPublishedLessonsWithProgress(topicFilter?: string): Promise<SkillGroupedLessons[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Query tất cả bài học đã Published
-  const { data: rawLessons, error } = await supabase
+  // Query tất cả bài học đã Published kèm thông tin topic
+  let query = supabase
     .from('lessons')
-    .select('*')
+    .select('*, topics(display_name)')
     .eq('status', 'published')
     .order('order_index', { ascending: true });
+
+  if (topicFilter && topicFilter !== 'all') {
+    if (topicFilter === 'general') {
+      query = query.is('topic', null);
+    } else {
+      query = query.eq('topic', topicFilter);
+    }
+  }
+
+  const { data: rawLessons, error } = await query;
 
   if (error) {
     console.error('Lỗi lấy danh sách bài học:', error);
@@ -62,8 +74,9 @@ export async function getPublishedLessonsWithProgress(): Promise<SkillGroupedLes
     }
   }
 
-  const allLessons: LessonWithProgress[] = (rawLessons || []).map((lesson) => ({
+  const allLessons: LessonWithProgress[] = (rawLessons || []).map((lesson: any) => ({
     ...lesson,
+    topic_display_name: lesson.topics?.display_name || (lesson.topic === null ? '📂 Chung' : null),
     isCompleted: completedLessonIds.has(lesson.id),
   }));
 

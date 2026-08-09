@@ -27,20 +27,22 @@ export interface LearnableVocabItem {
 // ------------------------------------------------------------------------------
 // 1. LẤY DANH SÁCH CHỦ ĐỀ KÈM THỐNG KÊ TIẾN ĐỘ CHO HỌC VIÊN
 // ------------------------------------------------------------------------------
+import { getActiveTopics } from '@/lib/taxonomy';
+
 export async function getVocabTopicsWithProgress(): Promise<VocabTopicWithProgress[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // 1. Lấy tất cả topics
-  const { data: topics, error: topicsErr } = await supabase
-    .from('vocab_topics')
-    .select('code, display_name, order_index')
-    .order('order_index', { ascending: true });
-
-  if (topicsErr || !topics) {
-    console.error('Lỗi đọc vocab_topics:', topicsErr);
+  // 1. Lấy tất cả active topics từ lib/taxonomy (loại bỏ topic is_active = false)
+  const activeTopics = await getActiveTopics();
+  if (!activeTopics || activeTopics.length === 0) {
     return [];
   }
+  const topics = activeTopics.map((t) => ({
+    code: t.code,
+    display_name: t.display_name,
+    order_index: t.order_index,
+  }));
 
   // 2. Lấy số lượng từ published theo từng topic
   const { data: vocabCounts } = await supabase

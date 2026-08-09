@@ -3,7 +3,7 @@
 -- CẢNH BÁO: CHỈ chạy khi DB toàn dữ liệu test
 -- ==============================================================================
 -- Mô tả: Script này dọn dẹp sạch toàn bộ dữ liệu mẫu / dữ liệu chạy thử trong DB,
--- nhưng GIỮ NGUYÊN tài khoản học viên, tài khoản Admin (profiles) và auth.users.
+-- nhưng GIỮ NGUYÊN tài khoản học viên, tài khoản Admin (profiles), danh mục Topics và Levels.
 -- ==============================================================================
 
 TRUNCATE TABLE 
@@ -18,5 +18,7 @@ TRUNCATE TABLE
   public.questions,
   public.lessons,
   public.tests,
+  public.vocab_sessions,
+  public.user_vocab_progress,
   public.vocabulary_items
 RESTART IDENTITY CASCADE;

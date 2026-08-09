@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
+import { validateTopicCode, validateLevelCode } from "@/lib/taxonomy";
+
 // Limit tối đa bản ghi xử lý trong 1 lần gọi Server Action
 const MAX_BULK_LIMIT = 100;
 
@@ -54,18 +56,14 @@ async function checkAdminAuth() {
 // ------------------------------------------------------------------------------
 const FIELD_WHITELISTS: Record<ContentType, string[]> = {
   questions: ["level_tag", "topic", "difficulty"],
-  lessons: ["level_tag", "skill"],
+  lessons: ["level_tag", "skill", "topic"],
   vocabulary: ["topic", "level_tag"],
 };
 
-const VALID_LEVEL_TAGS = ["350+", "500+", "650+", "800+", "A2", "B1", "B2", "C1"];
 const VALID_DIFFICULTIES = ["easy", "medium", "hard"];
 const VALID_SKILLS = ["vocabulary", "grammar", "listening", "reading", "strategy"];
 
 const FieldValidators: Record<string, z.ZodType<any>> = {
-  level_tag: z.string().refine((val) => VALID_LEVEL_TAGS.includes(val), {
-    message: `Level tag không hợp lệ. Phải là một trong: ${VALID_LEVEL_TAGS.join(", ")}`,
-  }),
   difficulty: z.string().refine((val) => VALID_DIFFICULTIES.includes(val), {
     message: `Độ khó không hợp lệ. Phải là: easy, medium, hoặc hard`,
   }),
@@ -73,6 +71,7 @@ const FieldValidators: Record<string, z.ZodType<any>> = {
     message: `Kỹ năng không hợp lệ. Phải là một trong: ${VALID_SKILLS.join(", ")}`,
   }),
   topic: z.string().min(1, "Chủ đề không được để trống"),
+  level_tag: z.string().min(1, "Trình độ không được để trống"),
 };
 
 // Helper validate mảng IDs
@@ -205,20 +204,28 @@ export async function bulkUpdateField(
       }
     }
 
-    // Nếu sửa topic trong vocabulary_items, kiểm tra topic có tồn tại trong vocab_topics không
-    if (contentType === "vocabulary" && field === "topic") {
-      const { data: topicData } = await supabase
-        .from("vocab_topics")
-        .select("code")
-        .eq("code", String(value).trim().toLowerCase())
-        .maybeSingle();
-
-      if (!topicData) {
+    // Validate động mã Topic
+    if (field === "topic") {
+      const checkRes = await validateTopicCode(String(value), { allowInactive: false });
+      if (!checkRes.isValid) {
         return {
           success: false,
           success_count: 0,
           failed: [],
-          error: `Mã chủ đề '${value}' không tồn tại trong danh mục vocab_topics.`,
+          error: checkRes.error || `Mã chủ đề '${value}' không hợp lệ hoặc đang bị ẩn.`,
+        };
+      }
+    }
+
+    // Validate động mã Level
+    if (field === "level_tag") {
+      const checkRes = await validateLevelCode(String(value), { allowInactive: false });
+      if (!checkRes.isValid) {
+        return {
+          success: false,
+          success_count: 0,
+          failed: [],
+          error: checkRes.error || `Mã trình độ (level_tag) '${value}' không hợp lệ hoặc đang bị ẩn.`,
         };
       }
     }

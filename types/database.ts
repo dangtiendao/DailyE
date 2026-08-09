@@ -67,6 +67,7 @@ export interface Database {
           content: string;
           skill: SkillType;
           level_tag: string | null;
+          topic: string | null;
           status: ContentStatus;
           order_index: number;
           created_at: string;
@@ -79,6 +80,7 @@ export interface Database {
           content: string;
           skill: SkillType;
           level_tag?: string | null;
+          topic?: string | null;
           status?: ContentStatus;
           order_index?: number;
           created_at?: string;
@@ -91,6 +93,7 @@ export interface Database {
           content?: string;
           skill?: SkillType;
           level_tag?: string | null;
+          topic?: string | null;
           status?: ContentStatus;
           order_index?: number;
           created_at?: string;
@@ -385,21 +388,79 @@ export interface Database {
           updated_at?: string;
         };
       };
+      topics: {
+        Row: {
+          code: string;
+          display_name: string;
+          description: string | null;
+          order_index: number;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          code: string;
+          display_name: string;
+          description?: string | null;
+          order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          code?: string;
+          display_name?: string;
+          description?: string | null;
+          order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+      };
       vocab_topics: {
         Row: {
           code: string;
           display_name: string;
+          description: string | null;
           order_index: number;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          code: string;
+          display_name: string;
+          description?: string | null;
+          order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          code?: string;
+          display_name?: string;
+          description?: string | null;
+          order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+      };
+      levels: {
+        Row: {
+          code: string;
+          display_name: string;
+          order_index: number;
+          is_active: boolean;
+          created_at: string;
         };
         Insert: {
           code: string;
           display_name: string;
           order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
         };
         Update: {
           code?: string;
           display_name?: string;
           order_index?: number;
+          is_active?: boolean;
+          created_at?: string;
         };
       };
       vocabulary_items: {

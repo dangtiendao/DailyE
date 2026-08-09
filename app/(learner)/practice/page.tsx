@@ -16,19 +16,24 @@ const KNOWLEDGE_TAGS = [
   { tag: 'Vocabulary', label: 'Từ vựng doanh nghiệp', count: '20 câu' },
 ];
 
+import { getActiveLevels, LevelItem } from '@/lib/taxonomy';
+
 // Trang chọn chế độ Luyện đề TOEIC /practice
 export default function PracticeModePage() {
   const [topics, setTopics] = useState<VocabTopicWithProgress[]>([]);
+  const [levels, setLevels] = useState<LevelItem[]>([]);
   const [vocabParams, setVocabParams] = useState<GenerateVocabQuizParams>({
     mode: 'mixed',
     source: 'mixed',
     count: 10,
     topic: 'all',
+    level: 'all',
   });
   const [activeVocabQuiz, setActiveVocabQuiz] = useState<GenerateVocabQuizParams | null>(null);
 
   useEffect(() => {
     getVocabTopicsWithProgress().then((res) => setTopics(res)).catch(() => {});
+    getActiveLevels().then((res) => setLevels(res)).catch(() => {});
   }, []);
 
   const handleStartVocabQuiz = (e: React.FormEvent) => {
@@ -84,7 +89,7 @@ export default function PracticeModePage() {
             </div>
 
             <form onSubmit={handleStartVocabQuiz} className="space-y-3">
-              <div className="grid grid-cols-3 gap-2.5 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                 {/* Mode */}
                 <div className="space-y-1">
                   <label className="font-semibold text-slate-700">Dạng bài</label>
@@ -112,6 +117,23 @@ export default function PracticeModePage() {
                     {topics.map((t) => (
                       <option key={t.code} value={t.code}>
                         {t.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Level động */}
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Trình độ</label>
+                  <select
+                    value={vocabParams.level || 'all'}
+                    onChange={(e) => setVocabParams({ ...vocabParams, level: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="all">Tất cả trình độ</option>
+                    {levels.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {l.display_name}
                       </option>
                     ))}
                   </select>

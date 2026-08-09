@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { getAdminDashboardStats, DashboardStatsResult } from '@/app/actions/admin';
 import { getAdminActionLogs } from '@/lib/admin/bulk-actions';
-import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck, Sparkles, History } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, Upload, Users, BookOpen, Clock, ArrowRight, ShieldCheck, Sparkles, History, Layers } from 'lucide-react';
 
 // Trang Admin Dashboard kết nối Server Action lấy thống kê thực tế & 5 nhật ký gần nhất
 export default async function AdminDashboardPage() {
@@ -54,6 +54,13 @@ export default async function AdminDashboardPage() {
           <p className="text-xs text-slate-500 mt-0.5">Tổng quan thống kê hệ thống & quản trị nội dung DailyE</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/admin/taxonomy"
+            className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"
+          >
+            <Layers className="w-4 h-4 text-purple-600" />
+            🏷️ Taxonomy (Topics/Levels)
+          </Link>
           <Link
             href="/admin/logs"
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-md transition"

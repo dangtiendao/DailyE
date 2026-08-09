@@ -22,6 +22,8 @@ exam_part:       part1 | part2 | part3 | part4 | part5 | part6 | part7
 correct_answer:  A | B | C | D
 difficulty:      easy | medium | hard
 status:          draft | published
+level_tag:       350+ | 500+ | 650+ | 800+ (hoặc mã Level động xem tại /admin/taxonomy)
+topic:           office | hr | finance | ... (hoặc mã Topic động xem tại /admin/taxonomy, cho phép ô trống NULL)
 knowledge_tag:   (text tự do, phân cách bằng dấu phẩy trong Excel)
                  Ví dụ: "Chia động từ", "Từ loại", "Giới từ", "Từ vựng chủ đề Business"
 ```
@@ -29,16 +31,18 @@ knowledge_tag:   (text tự do, phân cách bằng dấu phẩy trong Excel)
 ### Bảng `lessons` (Bài học kiến thức)
 ```
 skill:           vocabulary | grammar | listening | reading | strategy
-level_tag:       A2 | B1 | B2 | C1
+level_tag:       350+ | 500+ | 650+ | 800+ (hoặc mã Level động xem tại /admin/taxonomy)
+topic:           office | hr | finance | ... (hoặc mã Topic động xem tại /admin/taxonomy, NULL = nhóm Chung)
 status:          draft | published
 ```
 
 ### Bảng `vocabulary_items` (Kho từ vựng Active Recall)
 ```
 word_type:       n | v | adj | adv | phrase
+level_tag:       350+ | 500+ | 650+ | 800+ (hoặc mã Level động xem tại /admin/taxonomy)
 topic:           office | hr | meeting | finance | marketing | travel
                  shopping | production | technology | health | restaurant | real_estate
-level_tag:       350+ | 500+ | 650+ | 800+
+                 (hoặc các mã Topic đang active xem tại trang /admin/taxonomy)
 status:          draft | published
 UNIQUE:          (word, word_type, topic) — không được trùng bộ 3 này
 ```
