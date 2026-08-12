@@ -227,27 +227,29 @@ export async function generateVocabQuiz(
       }
     }
 
-    // 4 Option (1 đúng + 3 nhiễu)
-    const rawOptions: VocabQuizOption[] = [
-      {
-        id: `opt-correct-${target.id}`,
-        text: qType === 'en_vi' ? target.meaning_vi : target.word,
-      },
-      ...filteredDistractors.slice(0, 3).map((d: StoreVocabItem, dIdx: number) => ({
-        id: `opt-distractor-${d.id}-${dIdx}`,
+    // 4 Option (1 đúng + 3 nhiễu) - Sử dụng ID ngẫu nhiên không lộ diện đáp án đúng
+    const optionIds = shuffleArray(['opt-1', 'opt-2', 'opt-3', 'opt-4']);
+
+    const rawOptionsList = [
+      { text: qType === 'en_vi' ? target.meaning_vi : target.word },
+      ...filteredDistractors.slice(0, 3).map((d: StoreVocabItem) => ({
         text: qType === 'en_vi' ? d.meaning_vi : d.word,
       })),
     ];
 
-    const shuffledOptions = shuffleArray(rawOptions);
+    const shuffledTexts = shuffleArray(rawOptionsList);
+    const shuffledOptions: VocabQuizOption[] = shuffledTexts.map((opt, optIdx) => ({
+      id: `${optionIds[optIdx]}-${Math.random().toString(36).substring(2, 6)}`,
+      text: opt.text,
+    }));
 
     questions.push({
       quizItemId: `quiz-${target.id}-${i}-${Math.random().toString(36).substring(2, 7)}`,
       vocabId: target.id,
       word: target.word,
       wordType: target.word_type,
-      meaningVi: target.meaning_vi,
-      example: target.example,
+      meaningVi: '', // Ẩn hoàn toàn nghĩa tiếng Việt khỏi payload ban đầu (chỉ trả về từ verifyVocabAnswer)
+      example: null, // Ẩn ví dụ khỏi payload ban đầu
       questionType: qType,
       prompt: qType === 'en_vi' ? target.word : target.meaning_vi,
       options: shuffledOptions,
@@ -262,17 +264,16 @@ export async function generateVocabQuiz(
 }
 
 // ------------------------------------------------------------------------------
-// 2. SUBMIT VOCAB ANSWER (KỂ CẢ VÀI CÂU MCQ HOẶC MATCHING)
+// 2. VERIFY VOCAB ANSWER (XÁC THỰC ĐÁP ÁN SIÊU TỐC ~80ms - KHÔNG BLOCK UI)
 // ------------------------------------------------------------------------------
-export async function submitVocabAnswer(
+export async function verifyVocabAnswer(
   vocabId: number,
   questionType: 'en_vi' | 'vi_en' | 'matching',
   selectedAnswerText: string
 ): Promise<SubmitVocabAnswerResult> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
-  // Đọc từ vựng từ DB để đối chiếu
+  // Đọc đáp án từ DB trong 1 query duy nhất
   const { data: vocab } = await supabase
     .from('vocabulary_items')
     .select('id, word, meaning_vi, example')
@@ -299,8 +300,30 @@ export async function submitVocabAnswer(
 
   const isCorrect = selectedAnswerText.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
 
-  // Nếu user đã đăng nhập, cập nhật user_vocab_progress & review_schedule
-  if (user) {
+  return {
+    success: true,
+    isCorrect,
+    correctAnswer,
+    word: vocab.word,
+    meaningVi: vocab.meaning_vi,
+    example: vocab.example,
+  };
+}
+
+// 2B. SAVE VOCAB PROGRESS (GHI TIẾN ĐỘ SRS CHẠY NGẦM - NON-BLOCKING)
+// ------------------------------------------------------------------------------
+export async function saveVocabProgress(
+  vocabId: number,
+  isCorrect: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: true };
+    }
+
     const now = new Date().toISOString();
 
     // 1. Cập nhật user_vocab_progress
@@ -339,16 +362,26 @@ export async function submitVocabAnswer(
 
     // 2. Cập nhật review_schedule (SRS Leitner 1 -> 2 -> 4 -> 7 -> 15 ngày)
     await updateVocabSrsItem(supabase, user.id, String(vocabId), isCorrect);
-  }
 
-  return {
-    success: true,
-    isCorrect,
-    correctAnswer,
-    word: vocab.word,
-    meaningVi: vocab.meaning_vi,
-    example: vocab.example,
-  };
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = (err as Error).message || 'Lỗi không xác định';
+    console.error('Lỗi ghi ngầm tiến độ SRS:', errorMsg);
+    return { success: false, error: errorMsg };
+  }
+}
+
+export async function submitVocabAnswer(
+  vocabId: number,
+  questionType: 'en_vi' | 'vi_en' | 'matching',
+  selectedAnswerText: string
+): Promise<SubmitVocabAnswerResult> {
+  const result = await verifyVocabAnswer(vocabId, questionType, selectedAnswerText);
+  if (result.success) {
+    // Gọi ngầm saveVocabProgress không await để không làm chậm response
+    saveVocabProgress(vocabId, result.isCorrect).catch((e) => console.error(e));
+  }
+  return result;
 }
 
 // ------------------------------------------------------------------------------

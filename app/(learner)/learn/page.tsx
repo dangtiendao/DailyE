@@ -1,22 +1,32 @@
-import React from 'react';
+'use client';
+
+import React, { Suspense } from 'react';
 import Link from 'next/link';
-import { getPublishedLessonsWithProgress } from '@/app/actions/learn';
-import { getActiveTopics } from '@/lib/taxonomy';
+import { useSearchParams } from 'next/navigation';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { learnQueryOptions, taxonomyQueryOptions } from '@/lib/query-options';
 import { BookOpen, CheckCircle2, ChevronRight, Sparkles, Layers, ArrowRight, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LessonCardLink } from '@/components/learn/LessonCardLink';
+import LearnLoading from './loading';
 
-interface LearnPageProps {
-  searchParams: Promise<{ topic?: string }>;
-}
+function LearnContent() {
+  const searchParams = useSearchParams();
+  const topicFilter = searchParams.get('topic') || 'all';
 
-export default async function LearnPage({ searchParams }: LearnPageProps) {
-  const { topic: selectedTopic } = (await searchParams) || {};
-  const topicFilter = selectedTopic || 'all';
+  // Lấy danh sách bài học bằng React Query (Sử dụng cache prefetch từ BottomNav hoặc keepPreviousData)
+  const { data: skillGroups = [], isLoading: isLoadingLessons } = useQuery({
+    ...learnQueryOptions(topicFilter),
+    placeholderData: keepPreviousData,
+  });
 
-  const [skillGroups, activeTopics] = await Promise.all([
-    getPublishedLessonsWithProgress(topicFilter),
-    getActiveTopics(),
-  ]);
+  // Lấy taxonomy chủ đề bằng React Query
+  const { data: taxonomyData, isLoading: isLoadingTaxonomy } = useQuery(taxonomyQueryOptions());
+  const activeTopics = taxonomyData?.topics || [];
+
+  if (isLoadingLessons && skillGroups.length === 0) {
+    return <LearnLoading />;
+  }
 
   // Tính tổng số bài học và số bài đã hoàn thành
   let totalLessons = 0;
@@ -76,7 +86,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
             </div>
             <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
               <div
-                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                className="bg-blue-600 h-full transition-all duration-500"
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
@@ -140,9 +150,9 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
 
               <div className="space-y-2.5">
                 {group.lessons.map((lesson) => (
-                  <Link
+                  <LessonCardLink
                     key={lesson.id}
-                    href={`/learn/${lesson.slug}`}
+                    slug={lesson.slug}
                     className="p-4 bg-white border border-slate-200 hover:border-blue-300 rounded-2xl shadow-sm flex items-center justify-between transition group cursor-pointer"
                   >
                     <div className="space-y-1">
@@ -151,7 +161,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
                           {lesson.title}
                         </span>
                         {lesson.topic_display_name && (
-                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-[10px] font-bold">
+                          <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-[10px] font-bold">
                             {lesson.topic_display_name}
                           </span>
                         )}
@@ -179,14 +189,14 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
                       )}
                       <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition" />
                     </div>
-                  </Link>
+                  </LessonCardLink>
                 ))}
               </div>
             </section>
           );
         })}
 
-        {totalLessons === 0 && (
+        {totalLessons === 0 && !isLoadingLessons && (
           <div className="p-8 bg-white border border-slate-200 rounded-2xl text-center text-slate-500 text-xs space-y-2">
             <p className="font-bold text-slate-700 text-sm">Không tìm thấy bài học phù hợp</p>
             <p>Thử thay đổi bộ lọc chủ đề hoặc chọn "Tất cả chủ đề".</p>
@@ -194,5 +204,13 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LearnPage() {
+  return (
+    <Suspense fallback={<LearnLoading />}>
+      <LearnContent />
+    </Suspense>
   );
 }

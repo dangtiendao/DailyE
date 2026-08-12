@@ -71,25 +71,25 @@ export async function getUserProgressStats(): Promise<UserProgressData> {
     };
   }
 
-  // 1. Lấy thông tin Profile (Streak)
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('streak_count')
-    .eq('id', user.id)
-    .single();
-
-  // 2. Đếm số lỗi sai đã được giải quyết (resolved = true) từ error_logs
-  const { count: resolvedErrorCount } = await supabase
-    .from('error_logs')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('resolved', true);
-
-  // 3. THỐNG KÊ TỪ VỰNG TỪ USER_VOCAB_PROGRESS
-  const { data: vocabProgress } = await supabase
-    .from('user_vocab_progress')
-    .select('vocab_id, familiarity, total_wrong, vocabulary_items(id, word, meaning_vi)')
-    .eq('user_id', user.id);
+  // Gộp 5 câu truy vấn độc lập thực thi SONG SONG qua Promise.all để tối ưu thời gian phản hồi
+  const [
+    { data: profile },
+    { count: resolvedErrorCount },
+    { data: vocabProgress },
+    { data: rawAnswers },
+    { data: vocabSessions },
+  ] = await Promise.all([
+    // 1. Profile (Streak)
+    supabase.from('profiles').select('streak_count').eq('id', user.id).single(),
+    // 2. Resolved error logs
+    supabase.from('error_logs').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('resolved', true),
+    // 3. Vocab Progress
+    supabase.from('user_vocab_progress').select('vocab_id, familiarity, total_wrong, vocabulary_items(id, word, meaning_vi)').eq('user_id', user.id),
+    // 4. Raw Answers (TOEIC)
+    supabase.from('user_answers').select('created_at, is_correct, questions(exam_part, knowledge_tag)').eq('user_id', user.id).order('created_at', { ascending: true }),
+    // 5. Vocab Sessions
+    supabase.from('vocab_sessions').select('created_at, total_items, correct_items').eq('user_id', user.id),
+  ]);
 
   let vocabLearnedCount = 0;
   let vocabLearningCount = 0;
@@ -113,16 +113,8 @@ export async function getUserProgressStats(): Promise<UserProgressData> {
     }
   });
 
-  // Top 5 từ vựng sai nhiều nhất
   rawWeakVocab.sort((a, b) => b.totalWrong - a.totalWrong);
   const weakestVocabWords = rawWeakVocab.slice(0, 5);
-
-  // 4. Lấy toàn bộ câu trả lời của user trong user_answers kèm chi tiết câu hỏi (TOEIC)
-  const { data: rawAnswers } = await supabase
-    .from('user_answers')
-    .select('created_at, is_correct, questions(exam_part, knowledge_tag)')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true });
 
   const answersList = rawAnswers || [];
   const totalAnsweredCount = answersList.length;
@@ -133,12 +125,6 @@ export async function getUserProgressStats(): Promise<UserProgressData> {
   });
 
   const overallAccuracy = totalAnsweredCount > 0 ? Math.round((totalCorrect / totalAnsweredCount) * 100) : 0;
-
-  // 5. LẤY NHẬT KÝ VOCAB_SESSIONS CHO 14 NGÀY GẦN NHẤT
-  const { data: vocabSessions } = await supabase
-    .from('vocab_sessions')
-    .select('created_at, total_items, correct_items')
-    .eq('user_id', user.id);
 
   // 6. BẢNG THỐNG KÊ 14 NGÀY GẦN NHẤT (GỘP ĐỦ TOEIC VÀ VOCAB)
   const last14DaysMap = new Map<string, { toeicCorrect: number; toeicWrong: number; vocabCorrect: number; vocabWrong: number }>();
