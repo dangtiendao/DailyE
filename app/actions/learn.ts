@@ -54,24 +54,27 @@ export async function getPublishedLessonsWithProgress(topicFilter?: string): Pro
     }
   }
 
-  const { data: rawLessons, error } = await query;
+  // Truy vấn tất cả bài học đã Published kèm thông tin topic VÀ tiến độ học của user SONG SONG
+  const [lessonsRes, progressRes] = await Promise.all([
+    query,
+    user
+      ? supabase
+          .from('lesson_progress')
+          .select('lesson_id')
+          .eq('user_id', user.id)
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  const { data: rawLessons, error } = lessonsRes;
 
   if (error) {
     console.error('Lỗi lấy danh sách bài học:', error);
     return [];
   }
 
-  // Lấy danh sách ID các bài học mà user hiện tại đã hoàn thành
   const completedLessonIds = new Set<string>();
-  if (user) {
-    const { data: progressData } = await supabase
-      .from('lesson_progress')
-      .select('lesson_id')
-      .eq('user_id', user.id);
-
-    if (progressData) {
-      progressData.forEach((p) => completedLessonIds.add(p.lesson_id));
-    }
+  if (progressRes.data) {
+    progressRes.data.forEach((p) => completedLessonIds.add(p.lesson_id));
   }
 
   const allLessons: LessonWithProgress[] = (rawLessons || []).map((lesson: any) => ({
@@ -113,26 +116,26 @@ export async function getLessonBySlug(slug: string) {
     return null;
   }
 
-  // Kiểm tra user hiện tại đã học xong chưa
-  let isCompleted = false;
-  if (user) {
-    const { data: progress } = await supabase
-      .from('lesson_progress')
-      .select('completed_at')
-      .eq('user_id', user.id)
-      .eq('lesson_id', lesson.id)
-      .single();
+  // Truy vấn song song kiểm tra tiến độ học & số lượng câu hỏi liên kết
+  const [
+    { data: progress },
+    { count: linkedQuestionCount },
+  ] = await Promise.all([
+    user
+      ? supabase
+          .from('lesson_progress')
+          .select('completed_at')
+          .eq('user_id', user.id)
+          .eq('lesson_id', lesson.id)
+          .single()
+      : Promise.resolve({ data: null }),
+    supabase
+      .from('lesson_questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('lesson_id', lesson.id),
+  ]);
 
-    if (progress) {
-      isCompleted = true;
-    }
-  }
-
-  // Đếm số lượng câu hỏi liên kết trong lesson_questions
-  const { count: linkedQuestionCount } = await supabase
-    .from('lesson_questions')
-    .select('*', { count: 'exact', head: true })
-    .eq('lesson_id', lesson.id);
+  const isCompleted = !!progress;
 
   return {
     ...lesson,

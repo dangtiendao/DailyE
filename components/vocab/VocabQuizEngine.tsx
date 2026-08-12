@@ -14,6 +14,8 @@ import { VocabSummaryCard, AttentionWordItem } from './VocabSummaryCard';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { VocabSessionMode } from '@/types/database';
 
+import { flushPendingProgressQueue } from '@/lib/sync-queue';
+
 interface VocabQuizEngineProps {
   params: GenerateVocabQuizParams;
   onFinish?: () => void;
@@ -84,7 +86,7 @@ export function VocabQuizEngine({ params, onFinish }: VocabQuizEngineProps) {
   }, [JSON.stringify(params)]);
 
   // Xử lý nạp câu tiếp theo trong Queue MCQ
-  const handleMCQNext = (isFirstTryCorrect: boolean, isFinalCorrect: boolean) => {
+  const handleMCQNext = (isFirstTryCorrect: boolean, isFinalCorrect: boolean, feedback?: any) => {
     if (activeQueue.length === 0) return;
 
     const currentItem = activeQueue[0];
@@ -97,14 +99,14 @@ export function VocabQuizEngine({ params, onFinish }: VocabQuizEngineProps) {
       }
     }
 
-    // Nếu trả lời sai -> Ghi vào danh sách từ cần chú ý
+    // Nếu trả lời sai -> Ghi vào danh sách từ cần chú ý (Dùng meaningVi từ server feedback)
     if (!isFinalCorrect) {
       setAttentionWordsMap((prev) => {
         const next = new Map(prev);
         next.set(currentItem.vocabId, {
           vocabId: currentItem.vocabId,
-          word: currentItem.word,
-          meaningVi: currentItem.meaningVi,
+          word: feedback?.word || currentItem.word,
+          meaningVi: feedback?.meaningVi || currentItem.meaningVi || '',
         });
         return next;
       });
@@ -122,11 +124,14 @@ export function VocabQuizEngine({ params, onFinish }: VocabQuizEngineProps) {
 
     setActiveQueue(nextQueue);
 
-    // Khi hàng đợi rỗng -> Hoàn thành phiên học
+    // When session finishes, flush any remaining pending local progress items
     if (nextQueue.length === 0) {
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       setDurationSeconds(elapsed);
       setIsCompleted(true);
+
+      // Flush ngầm toàn bộ pending progress trong localStorage
+      flushPendingProgressQueue();
 
       // Ghi nhận vocab_sessions về Server
       const mode = (params.mode || 'mixed') as VocabSessionMode;

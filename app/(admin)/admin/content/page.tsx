@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   getQuestions,
@@ -60,6 +61,8 @@ import { getAllTopics, getAllLevels, TopicItem, LevelItem } from '@/lib/taxonomy
 
 export default function AdminContentPage() {
   const [activeTab, setActiveTab] = useState<ContentType>('questions');
+  const [isPending, startTransition] = useTransition();
+  const queryClient = useQueryClient();
 
   // Dynamic Taxonomy State
   const [adminTopics, setAdminTopics] = useState<TopicItem[]>([]);
@@ -129,8 +132,10 @@ export default function AdminContentPage() {
         return;
       }
     }
-    setSelectedIds(new Set());
-    setActiveTab(newTab);
+    startTransition(() => {
+      setSelectedIds(new Set());
+      setActiveTab(newTab);
+    });
   };
 
   // Tải danh sách câu hỏi
@@ -332,6 +337,10 @@ export default function AdminContentPage() {
     if (activeTab === 'questions') loadQuestions();
     else if (activeTab === 'lessons') loadLessons();
     else loadVocabItems();
+
+    // Invalidate React Query cache để client lập tức hiển thị bản mới nhất
+    queryClient.invalidateQueries({ queryKey: ['publishedLessons'] });
+    queryClient.invalidateQueries({ queryKey: ['todayDashboard'] });
   };
 
   const handleExecuteBulkStatus = async (newStatus: 'published' | 'draft') => {
@@ -445,14 +454,23 @@ export default function AdminContentPage() {
       </header>
 
       {/* Tabs Header */}
-      <div className="flex border-b border-slate-200 gap-2">
+      <div className="flex border-b border-slate-200 gap-2 relative">
+        {isPending && (
+          <div className="absolute right-0 -top-8 flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white rounded-full text-xs font-semibold shadow-md animate-pulse">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Đang chuyển tab...</span>
+          </div>
+        )}
+
         <button
           onClick={() => handleTabChange('questions')}
+          disabled={isPending}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'questions'
               ? 'border-blue-600 text-blue-600 bg-white rounded-t-xl'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-900',
+            isPending && 'cursor-not-allowed opacity-60'
           )}
         >
           <FileText className="w-4 h-4" />
@@ -461,11 +479,13 @@ export default function AdminContentPage() {
 
         <button
           onClick={() => handleTabChange('lessons')}
+          disabled={isPending}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'lessons'
               ? 'border-blue-600 text-blue-600 bg-white rounded-t-xl'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-900',
+            isPending && 'cursor-not-allowed opacity-60'
           )}
         >
           <BookOpen className="w-4 h-4" />
@@ -474,11 +494,13 @@ export default function AdminContentPage() {
 
         <button
           onClick={() => handleTabChange('vocabulary')}
+          disabled={isPending}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === 'vocabulary'
               ? 'border-indigo-600 text-indigo-600 bg-white rounded-t-xl'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-900',
+            isPending && 'cursor-not-allowed opacity-60'
           )}
         >
           <Sparkles className="w-4 h-4" />
@@ -487,17 +509,21 @@ export default function AdminContentPage() {
 
         <button
           onClick={() => handleTabChange('tests')}
+          disabled={isPending}
           className={cn(
             'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
             activeTab === ('tests' as any)
               ? 'border-amber-600 text-amber-600 bg-white rounded-t-xl'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-900',
+            isPending && 'cursor-not-allowed opacity-60'
           )}
         >
           <FileText className="w-4 h-4 text-amber-600" />
           <span>4. Đề thi TOEIC ({testsList.length})</span>
         </button>
       </div>
+
+      <div className={cn('transition-opacity duration-200', isPending && 'opacity-60 pointer-events-none')}>
 
       {/* TAB 1: CÂU HỎI TOEIC */}
       {activeTab === 'questions' && (
@@ -1085,6 +1111,7 @@ export default function AdminContentPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

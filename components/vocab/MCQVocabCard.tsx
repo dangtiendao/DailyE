@@ -1,16 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
-import { VocabQuizQuestion, submitVocabAnswer, SubmitVocabAnswerResult } from '@/app/actions/vocab';
-import { CheckCircle2, XCircle, ArrowRight, BookOpen, Sparkles, Volume2, HelpCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { VocabQuizQuestion, verifyVocabAnswer, SubmitVocabAnswerResult } from '@/app/actions/vocab';
+import { syncVocabProgressWithRetry } from '@/lib/sync-queue';
+import { CheckCircle2, XCircle, ArrowRight, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MCQVocabCardProps {
   question: VocabQuizQuestion;
   currentIndex: number;
   totalQuestions: number;
-  onNext: (isFirstTryCorrect: boolean, isFinalCorrect: boolean) => void;
+  onNext: (isFirstTryCorrect: boolean, isFinalCorrect: boolean, feedback?: SubmitVocabAnswerResult | null) => void;
 }
+
+// 1. Tách Component ProgressBar với React.memo để tránh re-render khi chọn đáp án
+const QuizProgressBar = React.memo(function QuizProgressBar({
+  currentIndex,
+  totalQuestions,
+  questionType,
+}: {
+  currentIndex: number;
+  totalQuestions: number;
+  questionType: 'en_vi' | 'vi_en';
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+        <span className="flex items-center gap-1.5 font-bold text-blue-600">
+          <Sparkles className="w-4 h-4" />
+          {questionType === 'en_vi' ? 'Chọn Nghĩa tiếng Việt' : 'Chọn Từ tiếng Anh'}
+        </span>
+        <span className="font-bold text-slate-700">
+          {currentIndex + 1} / {totalQuestions}
+        </span>
+      </div>
+      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+        <div
+          className="bg-blue-600 h-full transition-all duration-300 rounded-full"
+          style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+});
 
 export function MCQVocabCard({
   question,
@@ -18,67 +50,95 @@ export function MCQVocabCard({
   totalQuestions,
   onNext,
 }: MCQVocabCardProps) {
+  // State quản lý lựa chọn & phản hồi cục bộ trong từng câu (Không đẩy ra parent)
   const [selectedOptionText, setSelectedOptionText] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [feedback, setFeedback] = useState<SubmitVocabAnswerResult | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isFirstAttempt, setIsFirstAttempt] = useState(true);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleSelectOption = async (optionText: string) => {
-    if (hasAnswered || isSubmitting) return;
+  // Xử lý chọn đáp án tức thì (Visual feedback < 100ms)
+  const handleSelectOption = useCallback(
+    async (optionText: string) => {
+      if (hasAnswered || isVerifying) return;
 
-    setSelectedOptionText(optionText);
-    setIsSubmitting(true);
+      // 1. Phản hồi thị giác TỨC THÌ (0ms)
+      setSelectedOptionText(optionText);
+      setIsVerifying(true);
+      setToastMessage(null);
 
-    try {
-      const res = await submitVocabAnswer(
-        question.vocabId,
-        question.questionType,
-        optionText
-      );
+      // Timeout Safety Guard (5 giây): Khôi phục nút nếu mạng treo
+      const timeoutTimer = setTimeout(() => {
+        setIsVerifying((verifying) => {
+          if (verifying) {
+            setSelectedOptionText(null);
+            setToastMessage('Kết nối gián đoạn. Vui lòng chọn lại đáp án.');
+            return false;
+          }
+          return verifying;
+        });
+      }, 5000);
 
-      setFeedback(res);
-      setHasAnswered(true);
-    } catch (err) {
-      console.error('Lỗi nộp đáp án:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+      try {
+        // 2. Xác thực đáp án SIÊU TỐC từ Server (~80ms)
+        const res = await verifyVocabAnswer(
+          question.vocabId,
+          question.questionType,
+          optionText
+        );
 
-  const handleNextClick = () => {
+        clearTimeout(timeoutTimer);
+        setIsVerifying(false);
+        setFeedback(res);
+        setHasAnswered(true);
+
+        // 3. TÁCH GHI TIẾN ĐỘ SRS CHẠY NGẦM (NON-BLOCKING) + AUTO RETRY & LOCALSTORAGE
+        syncVocabProgressWithRetry(question.vocabId, res.isCorrect, (msg) => {
+          setToastMessage(msg);
+        });
+      } catch (err) {
+        clearTimeout(timeoutTimer);
+        setIsVerifying(false);
+        setSelectedOptionText(null);
+        setToastMessage('Có lỗi kết nối máy chủ. Vui lòng bấm chọn lại.');
+        console.error('Lỗi đối chiếu đáp án:', err);
+      }
+    },
+    [hasAnswered, isVerifying, question]
+  );
+
+  // Chuyển sang câu tiếp theo
+  const handleNextClick = useCallback(() => {
     if (!feedback) return;
-    onNext(isFirstAttempt && feedback.isCorrect, feedback.isCorrect);
+    onNext(isFirstAttempt && feedback.isCorrect, feedback.isCorrect, feedback);
 
-    // Reset local card state for next item
+    // Reset local card state cho câu tiếp theo
     setSelectedOptionText(null);
     setFeedback(null);
     setHasAnswered(false);
     setIsFirstAttempt(true);
-  };
+    setToastMessage(null);
+  }, [feedback, isFirstAttempt, onNext]);
 
   const optionLabels = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-6 max-w-md mx-auto">
-      {/* Header & Progress Bar */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-          <span className="flex items-center gap-1.5 font-bold text-blue-600">
-            <Sparkles className="w-4 h-4" />
-            {question.questionType === 'en_vi' ? 'Chọn Nghĩa tiếng Việt' : 'Chọn Từ tiếng Anh'}
-          </span>
-          <span className="font-bold text-slate-700">
-            {currentIndex + 1} / {totalQuestions}
-          </span>
+    <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-6 max-w-md mx-auto relative">
+      {/* Toast Cảnh báo nếu gặp sự cố mạng */}
+      {toastMessage && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>{toastMessage}</span>
         </div>
-        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-          <div
-            className="bg-blue-600 h-full transition-all duration-300 rounded-full"
-            style={{ width: `${((currentIndex + 1) / totalQuestions) * 100}%` }}
-          />
-        </div>
-      </div>
+      )}
+
+      {/* Header & Progress Bar được Memoize */}
+      <QuizProgressBar
+        currentIndex={currentIndex}
+        totalQuestions={totalQuestions}
+        questionType={question.questionType}
+      />
 
       {/* Question Prompt Hero */}
       <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl text-center space-y-2">
@@ -113,17 +173,22 @@ export function MCQVocabCard({
               btnStyle = 'border-slate-100 bg-slate-50 text-slate-400 opacity-60';
             }
           } else if (isSelected) {
-            btnStyle = 'border-blue-600 bg-blue-50 text-blue-900 font-bold';
+            if (isVerifying) {
+              btnStyle = 'border-blue-600 bg-blue-50 text-blue-900 font-bold animate-pulse ring-2 ring-blue-300';
+            } else {
+              btnStyle = 'border-blue-600 bg-blue-50 text-blue-900 font-bold';
+            }
           }
 
           return (
             <button
               key={opt.id}
               onClick={() => handleSelectOption(opt.text)}
-              disabled={hasAnswered || isSubmitting}
+              disabled={hasAnswered || isVerifying}
               className={cn(
                 'w-full p-4 border-2 rounded-2xl text-left text-sm font-semibold transition-all duration-200 flex items-center justify-between group',
-                btnStyle
+                btnStyle,
+                isVerifying && !isSelected && 'opacity-50 cursor-not-allowed'
               )}
             >
               <div className="flex items-center gap-3">
@@ -134,10 +199,12 @@ export function MCQVocabCard({
                       ? 'bg-emerald-600 text-white'
                       : hasAnswered && isWrongSelected
                       ? 'bg-rose-600 text-white'
+                      : isSelected && isVerifying
+                      ? 'bg-blue-600 text-white'
                       : 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700'
                   )}
                 >
-                  {optionLabels[idx]}
+                  {isSelected && isVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : optionLabels[idx]}
                 </span>
                 <span className="text-sm leading-snug">{opt.text}</span>
               </div>
@@ -149,7 +216,7 @@ export function MCQVocabCard({
         })}
       </div>
 
-      {/* Immediate Feedback Card & Explanation */}
+      {/* Phản hồi tức thì & Giải thích */}
       {hasAnswered && feedback && (
         <div
           className={cn(
