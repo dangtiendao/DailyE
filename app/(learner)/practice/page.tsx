@@ -17,11 +17,13 @@ const KNOWLEDGE_TAGS = [
 ];
 
 import { getActiveLevels, LevelItem } from '@/lib/taxonomy';
+import { getPublishedTests, PublishedTestItem } from '@/app/actions/practice';
 
 // Trang chọn chế độ Luyện đề TOEIC /practice
 export default function PracticeModePage() {
   const [topics, setTopics] = useState<VocabTopicWithProgress[]>([]);
   const [levels, setLevels] = useState<LevelItem[]>([]);
+  const [publishedTests, setPublishedTests] = useState<PublishedTestItem[]>([]);
   const [vocabParams, setVocabParams] = useState<GenerateVocabQuizParams>({
     mode: 'mixed',
     source: 'mixed',
@@ -34,6 +36,7 @@ export default function PracticeModePage() {
   useEffect(() => {
     getVocabTopicsWithProgress().then((res) => setTopics(res)).catch(() => {});
     getActiveLevels().then((res) => setLevels(res)).catch(() => {});
+    getPublishedTests().then((res) => setPublishedTests(res)).catch(() => {});
   }, []);
 
   const handleStartVocabQuiz = (e: React.FormEvent) => {
@@ -289,6 +292,47 @@ export default function PracticeModePage() {
               ))}
             </div>
           </section>
+
+          {/* CHẾ ĐỘ 5: 📄 BỘ ĐỀ THI CỐ ĐỊNH (FIXED TESTS) */}
+          {publishedTests.length > 0 && (
+            <section className="space-y-3 pt-2">
+              <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <span>📄 Bộ Đề Thi Luyện Tập Cố Định</span>
+              </h2>
+
+              <div className="space-y-2.5">
+                {publishedTests.map((test) => (
+                  <Link
+                    key={test.id}
+                    href={`/practice/session?testId=${test.id}`}
+                    className="p-4 bg-white border border-amber-200 hover:border-amber-400 rounded-2xl shadow-sm flex items-center justify-between transition group cursor-pointer"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm group-hover:text-amber-600 transition">
+                          {test.title}
+                        </span>
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold uppercase">
+                          {test.test_type} test
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" /> {test.time_limit_minutes} phút
+                        </span>
+                        <span>•</span>
+                        <span className="font-bold text-blue-600">{test.question_count} câu hỏi</span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-50 group-hover:bg-amber-500 group-hover:text-white text-amber-700 rounded-xl transition">
+                      <Play className="w-4 h-4 fill-current" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>

@@ -14,6 +14,9 @@ import {
   toggleVocabStatus,
   upsertAdminVocabItem,
   deleteAdminVocabItem,
+  getAdminTests,
+  toggleTestStatus,
+  deleteTest,
   UpsertQuestionInput,
   UpsertLessonInput,
 } from '@/app/actions/admin';
@@ -115,8 +118,12 @@ export default function AdminContentPage() {
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<any | null>(null);
 
+  // Tests State
+  const [testsList, setTestsList] = useState<any[]>([]);
+  const [isTestsLoading, setIsTestsLoading] = useState(true);
+
   // Reset selected IDs when switching tabs
-  const handleTabChange = (newTab: ContentType) => {
+  const handleTabChange = (newTab: any) => {
     if (selectedIds.size > 0) {
       if (!confirm('Bạn có danh sách mục đang được chọn. Đổi tab sẽ bỏ chọn các mục này. Tiếp tục?')) {
         return;
@@ -167,15 +174,30 @@ export default function AdminContentPage() {
     }
   };
 
+  // Tải danh sách Đề thi
+  const loadTests = async () => {
+    setIsTestsLoading(true);
+    try {
+      const data = await getAdminTests();
+      setTestsList(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsTestsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'questions') {
       loadQuestions();
     } else if (activeTab === 'lessons') {
       loadLessons();
-    } else {
+    } else if (activeTab === 'vocabulary') {
       loadVocabItems();
+    } else if (activeTab === ('tests' as any)) {
+      loadTests();
     }
-  }, [activeTab, filters.examPart, filters.status, filters.levelTag, vocabFilters.topic, vocabFilters.level, vocabFilters.status]);
+  }, [activeTab, filters, vocabFilters]);
 
   // Handle single item status toggles
   const handleToggleQuestionStatus = async (id: string, currentStatus: string) => {
@@ -217,6 +239,21 @@ export default function AdminContentPage() {
       loadVocabItems();
     } else {
       alert(`Lỗi xóa từ vựng: ${res.error}`);
+    }
+  };
+
+  const handleToggleTestStatus = async (id: string, currentStatus: string) => {
+    const res = await toggleTestStatus(id, currentStatus);
+    if (res.success) loadTests();
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa đề thi này?')) return;
+    const res = await deleteTest(id);
+    if (res.success) {
+      loadTests();
+    } else {
+      alert(res.error || 'Lỗi xóa đề thi');
     }
   };
 
@@ -446,6 +483,19 @@ export default function AdminContentPage() {
         >
           <Sparkles className="w-4 h-4" />
           <span>3. Từ vựng Active Recall ({vocabItems.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('tests')}
+          className={cn(
+            'px-5 py-3 font-bold text-xs border-b-2 transition flex items-center gap-2',
+            activeTab === ('tests' as any)
+              ? 'border-amber-600 text-amber-600 bg-white rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          )}
+        >
+          <FileText className="w-4 h-4 text-amber-600" />
+          <span>4. Đề thi TOEIC ({testsList.length})</span>
         </button>
       </div>
 
@@ -791,6 +841,76 @@ export default function AdminContentPage() {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: ĐỀ THI TOEIC (TESTS) */}
+      {activeTab === ('tests' as any) && (
+        <div className="space-y-4">
+          {isTestsLoading ? (
+            <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-3 shadow-sm">
+              <Loader2 className="w-8 h-8 text-amber-600 animate-spin mx-auto" />
+              <p className="text-xs text-slate-500">Đang nạp danh sách đề thi...</p>
+            </div>
+          ) : testsList.length === 0 ? (
+            <div className="p-12 bg-white border border-slate-200 rounded-3xl text-center space-y-2 shadow-sm">
+              <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="font-bold text-slate-700 text-sm">Chưa có đề thi nào trong hệ thống</p>
+              <p className="text-xs text-slate-500">Hãy chuyển sang trang Import để nạp đề thi từ file Excel 2 Sheets</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b text-[11px] font-bold uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3">Tiêu đề đề thi</th>
+                      <th className="p-3">Loại đề (Type)</th>
+                      <th className="p-3">Thời gian (Phút)</th>
+                      <th className="p-3">Số câu hỏi</th>
+                      <th className="p-3">Lượt học viên làm bài</th>
+                      <th className="p-3">Trạng thái</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {testsList.map((test) => (
+                      <tr key={test.id} className="hover:bg-slate-50/50 transition">
+                        <td className="p-3 font-bold text-slate-900">{test.title}</td>
+                        <td className="p-3 uppercase font-semibold text-amber-700">{test.test_type}</td>
+                        <td className="p-3 font-semibold">{test.time_limit_minutes} phút</td>
+                        <td className="p-3 font-bold text-blue-600">{test.question_count} câu</td>
+                        <td className="p-3 font-bold text-emerald-600">{test.attempt_count} lượt</td>
+                        <td className="p-3">
+                          <button
+                            onClick={() => handleToggleTestStatus(test.id, test.status)}
+                            className={cn(
+                              'px-2.5 py-1 rounded-full text-[10px] font-bold transition flex items-center gap-1 w-fit',
+                              test.status === 'published'
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            )}
+                          >
+                            {test.status === 'published' ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <XCircle className="w-3 h-3 text-slate-400" />}
+                            <span>{test.status === 'published' ? 'Published' : 'Draft'}</span>
+                          </button>
+                        </td>
+                        <td className="p-3 text-right space-x-1">
+                          <button
+                            onClick={() => handleDeleteTest(test.id)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Xóa đề thi"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

@@ -27,6 +27,7 @@ DailyE là nền tảng webapp học kiến thức và luyện thi TOEIC tối �
    - Thi thử nhanh Mini Test 20 phút (hỗn hợp 20 câu có đồng hồ đếm ngược).
    - Luyện tập theo Part (Part 5: Hoàn thành câu, Part 6: Điền đoạn văn, Part 7: Đọc hiểu).
    - Luyện theo Chủ điểm Ngữ pháp / Từ vựng (Knowledge Tags).
+   - **Chế độ Bộ Đề Thi Luyện Tập Cố Định (`/practice`)** *(Phase 5E)*: Học viên làm đề thi cố định theo đúng thứ tự `order_index` từ bộ đề do Admin xuất bản, có đồng hồ đếm ngược `time_limit_minutes` và lưu điểm số vào `test_attempts` gắn đúng `test_id`.
    - **Bảo mật đáp án**: Client sử dụng `published_questions_safe` (VIEW loại bỏ `correct_answer` và `explanation`). Server Action chịu trách nhiệm chấm điểm an toàn.
 3. **Sổ lỗi sai thông minh (Smart Error Log)**:
    - Tự động ghi nhận các câu trả lời sai vào `error_logs`.
@@ -52,22 +53,27 @@ DailyE là nền tảng webapp học kiến thức và luyện thi TOEIC tối �
 7. **Quản trị Admin (CMS, Import & Audit Logs)**:
    - Bảng điều khiển Admin Dashboard (`/admin/dashboard`): Thống kê tổng quan & hiển thị 5 thao tác Admin mới nhất.
    - Công cụ kiểm thử Vocab Engine dành riêng cho Admin (`/admin/vocab-test`).
-   - Quản lý nội dung (`/admin/content`): Bảng câu hỏi TOEIC, Bài học Markdown, và Bảng từ vựng Active Recall.
+   - Quản lý nội dung (`/admin/content`): Bảng câu hỏi TOEIC, Bài học Markdown, Từ vựng Active Recall, và **Đề thi TOEIC (Tab 4)** với các tính năng xem số lượt học viên làm bài, đổi status Draft ↔ Published, và chặn xóa an toàn khi đã có dữ liệu làm bài.
    - **Thao tác hàng loạt (Bulk Actions)** *(Phase 5C)*: Select multi/header all, đổi trạng thái Published ↔ Draft hàng loạt, sửa trường metadata theo Whitelist có Zod preview, xóa hàng loạt 2 lớp xác nhận với cơ chế Policy A bảo vệ bản ghi đã có dữ liệu học viên.
    - **Lịch sử thao tác Admin (`/admin/logs`)** *(Phase 5C)*: Xem toàn bộ nhật ký ghi vết thao tác thêm, sửa, xóa (bulk & single) của Admin kèm phân trang, lọc theo action/content type và xem payload JSON detail.
-   - **Import Excel / CSV hàng loạt (`/admin/import`)**:
-     - Tab 1: Import Câu hỏi TOEIC.
-     - Tab 2: Import Từ vựng TOEIC (Zod validation preview dòng Xanh/Vàng/Đỏ, kiểm tra mã topic closed danh mục, chống trùng lặp `(word, word_type, topic)`).
-8. **Quản trị Taxonomy Hệ thống & Level Động (`/admin/taxonomy`)** *(Phase 5D)*:
+   - **Hệ thống Import Hàng loạt Multi-content (`/admin/import`)** *(Nâng cấp ở Phase 5E)*:
+     - Tab 1: Import Câu hỏi TOEIC (.xlsx).
+     - Tab 2: Import Từ vựng TOEIC (.csv / .xlsx).
+     - Tab 3: Import Bài học Multi-file Markdown (.md với YAML Frontmatter, giới hạn 50 file/lần, tối đa 200KB/file).
+     - Tab 4: Import Liên kết Bài học ↔ Câu hỏi (`lesson_questions` từ file Excel/CSV).
+     - Tab 5: Import Đề thi TOEIC (Excel 2 Sheets: `tests` và `test_questions`, kiểm tra số câu theo `test_type` và hỗ trợ ghi đè overwrite an toàn qua Stored Procedure PL/pgSQL).
+     - Tab 6: Import Taxonomy Động (Excel 2 Sheets: `topics` và `levels`, quy tắc chỉ thêm mới/cập nhật metadata, revalidate cache tức thì).
+8. **Quản trị Taxonomy Hệ thống & Level Động (`/admin/taxonomy`)** *(Phase 5D & 5E)*:
    - **Quản lý Chủ đề (Topics)**: Thêm mới, sửa tên hiển thị/mô tả/thứ tự, bật/tắt ẩn hiển thị (`is_active`). Xóa an toàn với đếm dữ liệu liên kết 3 bảng (`vocabulary_items`, `lessons`, `questions`) và công cụ di chuyển nội dung hàng loạt `moveTopicContent` chạy bằng SQL RPC Transaction.
    - **Quản lý Trình độ (Levels)**: Quản lý động danh mục Trình độ (`350+`, `500+`, `650+`, `800+`, `900+`, ...), loại bỏ hoàn toàn các danh sách/enum hardcode trên toàn ứng dụng.
-   - **Single Source of Truth**: Đồng bộ động taxonomy cho toàn hệ thống (Import Excel, Bulk Actions, Form CMS Admin, Lọc Bài học `/learn`, Danh mục Từ vựng `/learn/vocabulary`, Form Luyện tập `/practice`).
+   - **Single Source of Truth**: Đồng bộ động taxonomy cho toàn hệ thống (Import Excel/Markdown, Bulk Actions, Form CMS Admin, Lọc Bài học `/learn`, Danh mục Từ vựng `/learn/vocabulary`, Form Luyện tập `/practice`).
    - **Bảo toàn SRS đối với Topic Ẩn**: Khi Admin ẩn một Topic (`is_active = false`), từ vựng thuộc topic đó mà học viên đã nạp **vẫn xuất hiện và ôn tập bình thường** khi đến hạn SRS ở `/today` và các phiên quiz SRS.
 
 ### 🟡 SẮP CÓ (Backlog / Future Phases)
 
+- Export Taxonomy và Đề thi ra file Excel.
+- Import Media (Audio phát âm từ vựng & Hình ảnh câu hỏi TOEIC Part 1).
 - Dạng luyện gõ chính tả (Typing) và điền từ vựng vào câu (`example_blank`).
-- Phát âm Audio từ vựng (tích hợp `audio_url`).
 - Các phần thi Nghe TOEIC (Part 1, Part 2, Part 3, Part 4) kèm Trình phát Audio và Hình ảnh câu hỏi Part 1.
 
 ---
@@ -106,21 +112,43 @@ Hệ thống gồm 15 bảng chính trong schema `public`:
 └─────────────────┘       └─────────────────┘
 ```
 
-### Chi tiết các Bảng Taxonomy & Từ vựng mới (Phase 5D):
-- **`topics`** *(Nâng cấp từ `vocab_topics`)*: Danh mục chủ đề động (`code` PK, `display_name`, `description`, `order_index`, `is_active`, `created_at`).
-- **`levels`** *(Bảng mới Phase 5D)*: Danh mục trình độ động (`code` PK như `'350+'`, `'500+'`, `'650+'`, `'800+'`, `display_name`, `order_index`, `is_active`, `created_at`).
-- **`vocabulary_items`**: Kho từ vựng với `topic` (FK `topics.code`), `level_tag` (FK `levels.code`).
-- **`lessons`**: Bài học Markdown bổ sung `topic` (FK `topics.code` ON DELETE SET NULL, NULL = nhóm "Chung"), `level_tag` (FK `levels.code`).
-- **`questions`**: Câu hỏi TOEIC chuyển `topic` và `level_tag` thành FK liên kết động tới `topics.code` và `levels.code`.
-- **`user_vocab_progress`**: Tiến độ thuộc từ cá nhân (`user_id`, `vocab_id`, `familiarity` 0-3, `correct_streak`, `total_correct`, `total_wrong`, `last_seen_at`, `UNIQUE(user_id, vocab_id)`).
-- **`vocab_sessions`**: Nhật ký các phiên học từ vựng (`user_id`, `mode`, `total_items`, `correct_items`, `duration_seconds`, `created_at`).
+### Chi tiết các Bảng Taxonomy, Bài học & Đề thi (Phase 5D & 5E):
+- **`topics`**: Danh mục chủ đề động (`code` PK, `display_name`, `description`, `order_index`, `is_active`, `created_at`).
+- **`levels`**: Danh mục trình độ động (`code` PK như `'350+'`, `'500+'`, `'650+'`, `'800+'`, `display_name`, `order_index`, `is_active`, `created_at`).
+- **`lessons`**: Bài học Markdown với `topic` (FK `topics.code` ON DELETE SET NULL), `level_tag` (FK `levels.code`).
+- **`lesson_questions`**: Bảng liên kết Bài học ↔ Câu hỏi (`lesson_id`, `question_id`, `order_index`, PRIMARY KEY `(lesson_id, question_id)`).
+- **`tests`**: Bộ đề thi cố định (`id` UUID PK, `title`, `test_type` `'mini'|'part'|'full'`, `time_limit_minutes`, `status` `'draft'|'published'`).
+- **`test_questions`**: Cấu trúc đề thi (`test_id`, `question_id`, `order_index`, PRIMARY KEY `(test_id, question_id)`).
+- **`test_attempts`**: Lượt thi của học viên (`id` UUID PK, `user_id`, `test_id` FK `tests.id` ON DELETE SET NULL, `score`, `total_questions`, `time_spent_seconds`, `created_at`).
 
-### 💡 Ghi nhận 2 Nguồn Lỗi sai trong Hệ thống:
-1. **Lỗi sai làm bài TOEIC (Part 5, 6, 7, Mini Test)** -> Ghi vào bảng `error_logs`.
-2. **Lỗi sai từ vựng (Trắc nghiệm/Matching)** -> Ghi vào bảng `user_vocab_progress` (`total_wrong`, `correct_streak = 0`).
-3. **Nơi gộp dữ liệu**:
-   - Trang `/today`: Khối 1 đếm từ đến hạn từ `review_schedule`, Khối 4 đếm lỗi TOEIC từ `error_logs`.
-   - Trang `/progress`: Báo cáo gộp cả 2 nguồn, trích xuất Top 3 tag TOEIC yếu nhất và Top 5 từ vựng hay sai nhất.
+### Cấu trúc File & Quy tắc Validate Import (Phase 5E):
+
+#### **1. Import Bài học Multi-file Markdown (.md với YAML Frontmatter)**:
+Cấu trúc Frontmatter chuẩn:
+```yaml
+---
+title: "Bí quyết chinh phục TOEIC Part 5"
+slug: "bi-quyet-par-5"
+skill: "strategy" # vocabulary | grammar | reading | strategy
+level_tag: "500+" # FK levels.code (phải active)
+topic: "office"   # FK topics.code (tùy chọn, trống = nhóm "Chung")
+order_index: 1    # Số nguyên >= 0 (tùy chọn)
+---
+# Nội dung bài học (Markdown)
+...
+```
+- **Quy tắc validate**: `title` không rỗng, `slug` chuẩn URL format (chữ thường, số, dấu gạch ngang) và không trùng lặp, `skill` bắt buộc thuộc 4 giá trị chuẩn, `level_tag` và `topic` validate qua `lib/taxonomy.ts` (chỉ nhận item `is_active = true`).
+
+#### **2. Import Đề thi (Excel 2 Sheets: `tests` & `test_questions`)**:
+- Sheet 1 `tests`: `test_code`, `title`, `test_type` (`mini`/`part`/`full`), `time_limit_minutes`.
+- Sheet 2 `test_questions`: `test_code`, `question_code`, `order_index`.
+- **Chính sách Overwrite & SQL Transaction Block**: Khi import trùng `test_code` hoặc `title`, hệ thống tự động cảnh báo Vàng. Lệnh ghi đè gọi Stored Procedure PL/pgSQL `public.import_test_with_questions` (`supabase/migrations/008_import_test_transaction.sql`) chạy nguyên tử trong 1 Transaction Block với cơ chế **ROLLBACK 100%** nếu có bất kỳ lỗi chèn câu hỏi nào.
+
+#### **3. Import Taxonomy (Excel 2 Sheets: `topics` & `levels`)**:
+- Sheet 1 `topics`: `code` (`/^[a-z0-9_]+$/`), `display_name`, `description`, `order_index`.
+- Sheet 2 `levels`: `code` (`/^[a-zA-Z0-9_+ -]+$/`), `display_name`, `order_index`.
+- **Quy tắc An toàn Taxonomy**: **Chỉ thêm mới (`is_active = true`) hoặc cập nhật metadata (`display_name`, `description`, `order_index`)**. TUYỆT ĐỐI không bao giờ xóa, không bao giờ ẩn (`is_active = false`) hay thay đổi khóa chính `code`.
+- **Cơ chế Revalidate Cache**: Ngay sau khi commit, Server Action gọi `revalidateTaxonomyCache()` giúp dữ liệu mới cập nhật tức thì trên các dropdown import và trang học viên mà không cần F5 xoá cache.
 
 ---
 
@@ -173,8 +201,11 @@ DailyE/
 │   └── ui/                          # Component giao diện shadcn/ui
 ├── public/
 │   └── templates/
-│       ├── dailye_questions_template.xlsx  # File mẫu Excel Import Câu hỏi TOEIC
-│       └── dailye_vocab_template.csv      # File mẫu CSV Import Từ vựng TOEIC
+│       ├── dailye_questions_template.xlsx        # File mẫu Excel Import Câu hỏi TOEIC
+│       ├── dailye_vocab_template.csv            # File mẫu CSV Import Từ vựng TOEIC
+│       ├── dailye_lesson_questions_template.xlsx# File mẫu Excel Liên kết Bài học ↔ Câu hỏi
+│       ├── dailye_tests_template.xlsx           # File mẫu Excel Import Đề thi (2 Sheets)
+│       └── dailye_taxonomy_template.xlsx        # File mẫu Excel Import Taxonomy (2 Sheets)
 ├── supabase/
 │   ├── migrations/                  # Các file SQL Migration chạy trên Supabase
 │   │   ├── 001_init.sql             # 12 bảng cơ bản, triggers & safe view
@@ -183,7 +214,8 @@ DailyE/
 │   │   ├── 004_vocab_system.sql     # Hệ thống Từ vựng Active Recall (vocab_topics, RLS)
 │   │   ├── 005_admin_action_logs.sql # Nhật ký thao tác Admin & RLS Security Policies
 │   │   ├── 006_dynamic_taxonomy.sql # Dynamic Taxonomy (nâng cấp topics, bảng levels, FKs)
-│   │   └── 007_move_topic_content_rpc.sql # PL/pgSQL Stored Procedure di chuyển data trong SQL Transaction
+│   │   ├── 007_move_topic_content_rpc.sql # PL/pgSQL Stored Procedure di chuyển data trong SQL Transaction
+│   │   └── 008_import_test_transaction.sql # PL/pgSQL Stored Procedure import/overwrite Đề thi trong SQL Transaction
 │   └── scripts/                     # Các SQL Script tiện ích
 │       ├── reset_test_data.sql      # Script dọn sạch dữ liệu test (giữ admin/profiles)
 │       └── seed_vocab_test.sql       # Script chèn 25 từ vựng test cho 3 chủ đề
@@ -303,9 +335,9 @@ Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ
 
 ---
 
-## 📋 Checklist 12 Mục "Smoke Test" Sau Khi Deploy Production
+## 📋 Checklist 16 Mục "Smoke Test" Sau Khi Deploy Production
 
-Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 12 mục quan trọng nhất:
+Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 16 mục quan trọng nhất:
 
 | # | Mục Kiểm Thử (Smoke Test) | Trạng Thái Kỳ Vọng |
 |---|---|---|
@@ -321,10 +353,30 @@ Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 12 mục quan trọn
 | 10 | **Trang Kết quả (`/practice/result/[attemptId]`)** | Hiển thị đúng điểm số %, lộ lời giải chi tiết và gợi ý bài học đối với các tag bị sai. |
 | 11 | **Ôn từ vựng SRS hằng ngày (`/today`)** | Từ vựng đến hạn do SRS Leitner xuất hiện ở Khối 1 (`🔤 X từ đến hạn ôn`), làm bài quiz thành công và Streak 🔥 tăng ngày. |
 | 12 | **Báo cáo Tiến độ 14 ngày (`/progress`)** | Hiển thị thống kê từ đã thuộc/đang học, Top 5 từ hay sai nhất kèm nút *"Ôn ngay"*, biểu đồ 14 ngày phân biệt rõ cột TOEIC vs Vocab. |
+| 13 | **Import Multi-file Bài học .md (`/admin/import` - Tab 3)** *(Mới ở 5E)* | Upload 3 file `.md` mẫu $\rightarrow$ Preview render đúng, báo xanh 2 file hợp lệ, báo đỏ 1 file lỗi syntax/slug, commit thành công vào DB. |
+| 14 | **Import & Làm Đề thi Cố định (`/practice`)** *(Mới ở 5E)* | Import đề thi Excel 2 sheets $\rightarrow$ Publish tại `/admin/content` $\rightarrow$ Học viên thấy mục Bộ Đề thi cố định tại `/practice`, làm bài đúng thứ tự câu hỏi và countdown 20 phút $\rightarrow$ Kết quả ghi nhận vào `test_attempts`. |
+| 15 | **Import Liên kết Bài học ↔ Câu hỏi với Code sai (`/admin/import` - Tab 4)** *(Mới ở 5E)* | Upload file liên kết chứa `question_code` hoặc `lesson_slug` không tồn tại $\rightarrow$ Preview hiển thị lỗi Đỏ kèm thông báo gợi ý mã gần đúng. |
+| 16 | **Import Taxonomy & Dynamic Cache Revalidate (`/admin/import` - Tab 6)** *(Mới ở 5E)* | Import file mẫu Taxonomy 2 sheets $\rightarrow$ Topic/Level mới xuất hiện NGAY TRONG DROPDOWN của Tab Import Từ vựng mà không cần F5 xoá cache. |
 
 ---
 
 ## 📝 Nhật ký Thay đổi (Changelog)
+
+### Version 2.4.0 (2026-08-12) - Phase 5E: Multi-content Import Pipeline & Fixed Test Engine
+- **Hệ thống Import Hàng loạt Multi-content (`/admin/import`)**:
+  - **Tab 3 (Import Bài học .md)**: Hỗ trợ upload tối đa 50 file Markdown với YAML frontmatter cùng lúc. Server Action parse và validate Zod các trường `title`, `slug` UNIQUE, `skill`, `level_tag`, `topic` với taxonomy động.
+  - **Tab 4 (Liên kết Bài học ↔ Câu hỏi)**: Import file Excel/CSV thiết lập mối quan hệ giữa bài học và câu hỏi trắc nghiệm, tự động gợi ý giá trị gần đúng nếu trỏ tới code không tồn tại.
+  - **Tab 5 (Import Đề thi TOEIC)**: Import file Excel 2 Sheets (`tests` và `test_questions`). Hỗ trợ ghi đè (overwrite) bộ đề thi an toàn trong 1 SQL Transaction Block qua Stored Procedure PL/pgSQL `public.import_test_with_questions` (Migration `008_import_test_transaction.sql`).
+  - **Tab 6 (Import Taxonomy)**: Import danh mục Chủ đề và Trình độ từ file Excel 2 Sheets (`topics` và `levels`). Áp dụng quy tắc an toàn "chỉ thêm mới / cập nhật metadata, không bao giờ xóa hay ẩn" và tự động gọi `revalidateTaxonomyCache()` ngay sau khi commit.
+- **Chế độ Bộ Đề Thi Luyện Tập Cố Định (`/practice`)**:
+  - Trang học viên bổ sung phần *"📄 Bộ Đề Thi Luyện Tập Cố Định"* liệt kê các bộ đề thi đã xuất bản (`status = 'published'`).
+  - Quiz Engine hỗ trợ tham số `testId`, nạp đúng danh sách câu hỏi cố định theo `order_index ASC`, đếm ngược thời gian `time_limit_minutes` và lưu lịch sử làm bài vào `test_attempts`.
+- **Quản lý Đề thi cho Admin (`/admin/content` - Tab 4)**:
+  - Bổ sung Tab Quản lý Đề thi TOEIC hiển thị loại đề, thời gian, số lượng câu hỏi, số lượt làm bài của học viên, bật/tắt trạng thái Published ↔ Draft và chặn xóa an toàn khi đề thi đã có dữ liệu `test_attempts > 0`.
+- **Bảo mật & Audit Logging**:
+  - Tất cả 4 luồng import mới đều yêu cầu kiểm tra quyền Admin Server-side (`checkAdminAuth()`) và ghi vết đầy đủ vào 2 bảng `content_imports` và `admin_action_logs`.
+  - Hiển thị Markdown preview an toàn thoát JSX, không sử dụng `dangerouslySetInnerHTML`.
+- **Breaking Changes**: KHÔNG (Tương thích ngược 100% với dữ liệu và pipeline cũ).
 
 ### Version 2.3.0 (2026-08-09) - Phase 5D: Dynamic System Taxonomy & Level Engine
 - **Trang Quản trị Taxonomy (`/admin/taxonomy`)**:

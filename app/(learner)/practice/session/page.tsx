@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getPracticeQuestions, submitPracticeAttempt, SafeQuestion } from '@/app/actions/practice';
+import { getPracticeQuestions, submitPracticeAttempt, generateFixedTestSession, SafeQuestion } from '@/app/actions/practice';
 import {
   ArrowLeft,
   Clock,
@@ -25,6 +25,7 @@ function QuizEngineContent() {
   const part = searchParams.get('part') || undefined;
   const tag = searchParams.get('tag') || undefined;
   const mode = searchParams.get('mode') || undefined;
+  const testId = searchParams.get('testId') || undefined;
 
   const [questions, setQuestions] = useState<SafeQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -37,7 +38,7 @@ function QuizEngineContent() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Countdown timer cho Mini Test (20 phút = 1200 giây)
+  // Countdown timer cho Mini Test hoặc Đề thi cố định (seconds)
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(
     mode === 'mini' ? 1200 : null
   );
@@ -49,16 +50,28 @@ function QuizEngineContent() {
   useEffect(() => {
     const fetchQuestions = async () => {
       setIsLoading(true);
-      const data = await getPracticeQuestions({
-        part,
-        tag,
-        limit: mode === 'mini' ? 20 : 15,
-      });
-      setQuestions(data);
+      if (testId) {
+        const res = await generateFixedTestSession(testId);
+        if (res.success && res.questions) {
+          setQuestions(res.questions);
+          if (res.test?.time_limit_minutes) {
+            setSecondsRemaining(res.test.time_limit_minutes * 60);
+          }
+        } else {
+          setErrorMessage(res.error || 'Không thể tải bộ đề thi');
+        }
+      } else {
+        const data = await getPracticeQuestions({
+          part,
+          tag,
+          limit: mode === 'mini' ? 20 : 15,
+        });
+        setQuestions(data);
+      }
       setIsLoading(false);
     };
     fetchQuestions();
-  }, [part, tag, mode]);
+  }, [part, tag, mode, testId]);
 
   // Đồng hồ đếm ngược cho Mini Test
   useEffect(() => {
@@ -136,6 +149,7 @@ function QuizEngineContent() {
       const result = await submitPracticeAttempt({
         answers: answersPayload,
         totalTimeSpentSeconds,
+        testId: testId,
       });
 
       if (!result.success || !result.attemptId) {

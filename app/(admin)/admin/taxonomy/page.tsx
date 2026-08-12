@@ -298,6 +298,13 @@ export default function AdminTaxonomyPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/admin/import?tab=taxonomy"
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition"
+          >
+            📥 Import Taxonomy
+          </Link>
+
           {activeTab === 'topics' ? (
             <button
               onClick={() => {

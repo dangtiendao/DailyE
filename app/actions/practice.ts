@@ -328,3 +328,94 @@ export async function getAttemptResult(attemptId: string) {
     recommendedLessons,
   };
 }
+
+// ------------------------------------------------------------------------------
+// 5. CÁC HÀM XỬ LÝ LÀM ĐỀ THI CỐ ĐỊNH (TESTS & TEST_QUESTIONS)
+// ------------------------------------------------------------------------------
+
+export interface PublishedTestItem {
+  id: string;
+  title: string;
+  test_type: 'mini' | 'part' | 'full';
+  time_limit_minutes: number;
+  question_count: number;
+  created_at: string;
+}
+
+export async function getPublishedTests(): Promise<PublishedTestItem[]> {
+  const supabase = await createClient();
+
+  const { data: tests, error } = await supabase
+    .from('tests')
+    .select('id, title, test_type, time_limit_minutes, created_at, test_questions(count)')
+    .eq('status', 'published')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Lỗi lấy danh sách đề thi published:', error);
+    return [];
+  }
+
+  return (tests || []).map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    test_type: t.test_type,
+    time_limit_minutes: t.time_limit_minutes,
+    created_at: t.created_at,
+    question_count: t.test_questions?.[0]?.count || 0,
+  }));
+}
+
+export async function generateFixedTestSession(testId: string) {
+  const supabase = await createClient();
+
+  // 1. Đọc thông tin đề thi
+  const { data: testObj, error: testErr } = await supabase
+    .from('tests')
+    .select('id, title, test_type, time_limit_minutes')
+    .eq('id', testId)
+    .eq('status', 'published')
+    .single();
+
+  if (testErr || !testObj) {
+    return { success: false, error: 'Đề thi không tồn tại hoặc chưa được xuất bản' };
+  }
+
+  // 2. Đọc danh sách test_questions theo order_index ASC
+  const { data: tqRows, error: tqErr } = await supabase
+    .from('test_questions')
+    .select('order_index, question_id')
+    .eq('test_id', testId)
+    .order('order_index', { ascending: true });
+
+  if (tqErr || !tqRows || tqRows.length === 0) {
+    return { success: false, error: 'Đề thi chưa có câu hỏi nào' };
+  }
+
+  const questionIds = tqRows.map((r) => r.question_id);
+
+  // 3. Query các câu hỏi từ safe view
+  const { data: rawQuestions, error: qErr } = await supabase
+    .from('published_questions_safe')
+    .select('id, code, exam_part, question_type, level_tag, question_text, options, knowledge_tag, topic, difficulty, image_url, audio_url')
+    .in('id', questionIds);
+
+  if (qErr || !rawQuestions) {
+    return { success: false, error: 'Lỗi nạp danh sách câu hỏi cho đề thi' };
+  }
+
+  const qMap = new Map((rawQuestions as SafeQuestion[]).map((q) => [q.id, q]));
+
+  // Sắp xếp các câu hỏi theo đúng order_index của test_questions
+  const questions: SafeQuestion[] = [];
+  tqRows.forEach((r) => {
+    const q = qMap.get(r.question_id);
+    if (q) questions.push(q);
+  });
+
+  return {
+    success: true,
+    test: testObj,
+    questions,
+  };
+}
