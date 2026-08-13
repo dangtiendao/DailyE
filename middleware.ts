@@ -39,10 +39,14 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/practice') ||
     pathname.startsWith('/progress') ||
     pathname.startsWith('/profile') ||
+    pathname.startsWith('/settings') ||
     pathname.startsWith('/onboarding');
 
   const isAdminRoute = pathname.startsWith('/admin');
-  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register');
+  const isAuthRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/forgot-password');
 
   // 0. Truy cập route gốc "/" -> Điều hướng theo trạng thái đăng nhập
   if (pathname === '/') {
@@ -59,22 +63,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 2. Đã đăng nhập mà truy cập trang /login hoặc /register -> Redirect về /today
-  if (user && isAuthRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/today';
-    return NextResponse.redirect(url);
-  }
-
-  // 3. Đã đăng nhập nhưng truy cập trang /admin -> Kiểm tra quyền access_level = 'admin'
-  if (user && isAdminRoute) {
+  // 2. Nếu đã đăng nhập: Kiểm tra trạng thái tài khoản (status = 'banned') và phân quyền Admin
+  if (user) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('access_level')
+      .select('access_level, status, banned_reason')
       .eq('id', user.id)
       .single();
 
-    if (!profile || profile.access_level !== 'admin') {
+    // Nếu tài khoản bị khóa -> Đăng xuất session và đá về /account-banned
+    if (profile?.status === 'banned') {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = '/account-banned';
+      if (profile.banned_reason) {
+        url.searchParams.set('reason', profile.banned_reason);
+      }
+      return NextResponse.redirect(url);
+    }
+
+    // Đã đăng nhập mà truy cập trang auth (/login, /register, /forgot-password) -> Redirect về /today
+    if (isAuthRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/today';
+      return NextResponse.redirect(url);
+    }
+
+    // Đã đăng nhập nhưng truy cập trang /admin -> Kiểm tra quyền access_level = 'admin'
+    if (isAdminRoute && (!profile || profile.access_level !== 'admin')) {
       const url = request.nextUrl.clone();
       url.pathname = '/today';
       url.searchParams.set('error', 'unauthorized');
@@ -93,9 +109,13 @@ export const config = {
     '/practice/:path*',
     '/progress/:path*',
     '/profile/:path*',
+    '/settings/:path*',
     '/onboarding/:path*',
     '/admin/:path*',
     '/login',
     '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/account-banned',
   ],
 };

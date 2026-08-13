@@ -79,6 +79,8 @@ export interface DashboardStatsResult {
   totalQuestions: number;
   totalLessons: number;
   totalUsers: number;
+  newUsers7Days: number;
+  bannedUsers: number;
   latestImport: {
     id: string;
     filename: string;
@@ -119,15 +121,21 @@ async function checkAdminAuth() {
 export async function getAdminDashboardStats(): Promise<DashboardStatsResult> {
   const { supabase } = await checkAdminAuth();
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const [
     { count: totalQuestions },
     { count: totalLessons },
     { count: totalUsers },
+    { count: newUsers7Days },
+    { count: bannedUsers },
     { data: latestImports },
   ] = await Promise.all([
     supabase.from("questions").select("*", { count: "exact", head: true }),
     supabase.from("lessons").select("*", { count: "exact", head: true }),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).eq("status", "banned"),
     supabase
       .from("content_imports")
       .select("*")
@@ -139,6 +147,8 @@ export async function getAdminDashboardStats(): Promise<DashboardStatsResult> {
     totalQuestions: totalQuestions || 0,
     totalLessons: totalLessons || 0,
     totalUsers: totalUsers || 0,
+    newUsers7Days: newUsers7Days || 0,
+    bannedUsers: bannedUsers || 0,
     latestImport:
       latestImports && latestImports.length > 0
         ? (latestImports[0] as DashboardStatsResult["latestImport"])

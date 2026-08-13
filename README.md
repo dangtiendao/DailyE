@@ -73,9 +73,21 @@ DailyE là nền tảng webapp học kiến thức và luyện thi TOEIC tối �
    - **Non-blocking Progress Sync**: Tách việc ghi `user_vocab_progress`, `review_schedule` SRS thành tác vụ chạy ngầm bất đồng bộ.
    - **Auto-Retry & LocalStorage Fallback**: Ghi ngầm fail ➔ Auto-retry 1 lần ➔ Vẫn fail ➔ Lưu tạm `localStorage` (`dailye_pending_vocab_progress`) + Toast cảnh báo. Tự động flush bù khi làm câu tiếp hoặc kết thúc phiên. Zero data loss khi rớt mạng.
    - **Instant Tab Navigation & Prefetching**: Prefetching ngầm khi hover/touch bottom nav & card bài học. `useTransition` chuyển tab admin mượt mà không chớp màn hình.
+10. **Tài khoản Học viên & Quản lý Thành viên Hệ thống (Account & User Management)** *(Mới ở Phase 5G)*:
+    - **Trang Thiết lập Tài khoản (`/settings`)**: Cập nhật Họ tên, Mục tiêu điểm TOEIC (tái sử dụng `TargetScoreSelector`), điều chỉnh mục tiêu học hằng ngày (`daily_goal_minutes` từ 5 đến 240 phút). Hiển thị email (readonly) và loại tài khoản đăng nhập (`email` / `google`).
+    - **Quy trình Mật khẩu (`/forgot-password`, `/reset-password`)**: Gửi email khôi phục mật khẩu trung tính chống rà quét email, giao diện đặt lại mật khẩu với Zod validation. Chặn hoàn toàn tài khoản Google không cho truy cập chức năng đổi/khôi phục mật khẩu.
+    - **Đặt lại Tiến độ Học tập (`reset_my_progress`)**: Cho phép học viên tự dọn dẹp toàn bộ dữ liệu thi, từ vựng, sổ lỗi sai để làm lại từ đầu trong 1 SQL Transaction block nguyên tử, giữ nguyên thông tin profile và Chuỗi ngày học (Streak).
+    - **Xóa Tài khoản Cá nhân (Hard Delete)**: Học viên tự xóa tài khoản vĩnh viễn với xác nhận 2 lớp (gõ đúng email). CASCADE tự động dọn dẹp sạch toàn bộ dữ liệu học tập.
+    - **Trang Quản lý Thành viên Admin (`/admin/users`)**:
+      - Bảng danh sách thành viên với tìm kiếm ILIKE (tên/email), lọc Quyền (Free/Premium/Admin), Trạng thái (Active/Banned), sắp xếp và phân trang 20 user/trang. Gắn badge `"Bạn"` cho Admin đang đăng nhập.
+      - **Drawer Chi tiết Thành viên (`UserDetailDrawer`)**: Xem chi tiết hồ sơ, provider đăng nhập, thống kê tổng lượt thi, điểm trung bình, số từ thuộc/đang học, bài học hoàn thành, streak và ngày hoạt động gần nhất.
+      - **Quản trị Quyền hạn & Trạng thái**: Đổi Role (xác nhận email 2 lớp khi nâng Admin), Khóa tài khoản 2 lớp (`profiles.status='banned'` + Native Auth Ban `updateUserById({ ban_duration })` kèm lý do tối thiểu 10 ký tự), Mở khóa tài khoản, Gửi email reset mật khẩu hộ user, Xóa vĩnh viễn tài khoản người dùng bởi Admin.
 
 ### 🟡 SẮP CÓ (Backlog / Future Phases)
 
+- Đổi địa chỉ email cá nhân (cần xác nhận 2 bước qua OTP / Email Link).
+- Thao tác hàng loạt trên danh sách người dùng (Bulk user actions).
+- Tải lên ảnh đại diện tùy chỉnh (Custom avatar upload).
 - Export Taxonomy và Đề thi ra file Excel.
 - Import Media (Audio phát âm từ vựng & Hình ảnh câu hỏi TOEIC Part 1).
 - Dạng luyện gõ chính tả (Typing) và điền từ vựng vào câu (`example_blank`).
@@ -126,6 +138,22 @@ Hệ thống gồm 15 bảng chính trong schema `public`:
 - **`test_questions`**: Cấu trúc đề thi (`test_id`, `question_id`, `order_index`, PRIMARY KEY `(test_id, question_id)`).
 - **`test_attempts`**: Lượt thi của học viên (`id` UUID PK, `user_id`, `test_id` FK `tests.id` ON DELETE SET NULL, `score`, `total_questions`, `time_spent_seconds`, `created_at`).
 
+### Chi tiết các Bảng Mở rộng & Quản lý Tài khoản (Phase 5G):
+- **`profiles`**: Bảng hồ sơ tài khoản mở rộng (`id` UUID PK FK `auth.users.id` ON DELETE CASCADE, `full_name`, `email` TEXT NULL, `access_level` `'free'|'premium'|'admin'`, `target_score` INT 200-990, `daily_goal_minutes` INT 5-240, `status` `'active'|'banned'`, `banned_reason` TEXT NULL, `streak_count`, `last_active_date`, `created_at`, `updated_at`). Index trên `email`, `status`, `access_level`.
+- **`admin_action_logs`**: Nhật ký thao tác Admin (`id` UUID PK, `admin_id` FK `profiles.id` ON DELETE SET NULL, `action_type`, `content_type`, `affected_ids` JSONB, `payload` JSONB, `created_at`).
+
+### Lý do Quyết định Kiến trúc & Bảo mật Phase 5G:
+- **Quyết định A1 (Sao chép email sang `profiles`)**: Giúp RLS Policies và Admin Server Actions truy vấn/lọc/tìm kiếm ILIKE trực tiếp trên schema `public` mà không cần gọi cross-schema JOIN sang `auth.users`, giúp tăng tốc độ truy vấn lên tối đa.
+- **Quyết định B1 (Khóa tài khoản 2 lớp)**: Lớp 1 ghi `profiles.status = 'banned'` để Middleware ngắt session tức thì; Lớp 2 gọi Supabase Auth Native Ban API (`updateUserById(userId, { ban_duration: '876000h' })`) để từ chối cấp/refresh JWT token ở tầng Auth Server.
+- **Quyết định C (Xóa tài khoản là Hard Delete)**: Gọi `auth.admin.deleteUser(userId)` thực hiện xóa cứng để tuân thủ quyền riêng tư người dùng (GDPR / Right to be forgotten). Tất cả 7 bảng dữ liệu học tập liên kết tự động dọn dẹp qua `ON DELETE CASCADE`.
+
+### Các Hàm Stored Procedure (RPC) Quản trị & Tiến độ:
+- **`public.count_active_admins()`**: Đếm tổng số tài khoản Admin đang hoạt động (`status = 'active'`).
+- **`public.check_active_admin_count_locked()`**: Đếm số Admin active kèm theo khóa hàng `FOR UPDATE` trong SQL Transaction, đảm bảo quy tắc "Duy trì >= 1 Admin active" chống 100% rủi ro Race condition khi 2 Admin thao tác đồng thời.
+- **`public.reset_my_progress()`**: Xóa sạch toàn bộ dữ liệu học tập của học viên hiện tại (`auth.uid()`) trong 1 Transaction nguyên tử (bao gồm `error_logs`, `review_schedule`, `user_vocab_progress`, `vocab_sessions`, `user_answers`, `test_attempts`, `lesson_progress`), giữ nguyên profile và streak.
+- **`public.move_topic_content()`**: Stored Procedure di chuyển toàn bộ dữ liệu từ topic nguồn sang topic đích trong 1 SQL Transaction Block.
+- **`public.import_test_with_questions()`**: Stored Procedure import/overwrite Đề thi trong 1 SQL Transaction Block.
+
 ### Cấu trúc File & Quy tắc Validate Import (Phase 5E):
 
 #### **1. Import Bài học Multi-file Markdown (.md với YAML Frontmatter)**:
@@ -157,9 +185,52 @@ order_index: 1    # Số nguyên >= 0 (tùy chọn)
 
 ---
 
-## 🏛️ Kiến trúc & Chiến lược Hiệu năng (Performance Architecture)
+## 🏛️ Kiến trúc & Chiến lược Hiệu năng & Bảo mật (Performance & Security Architecture)
 
-### 1. Cấu hình React Query Cache Tập trung & Danh sách Ngoại lệ
+### 1. Cơ chế Siết RLS `public.profiles` Chống Tự Nâng Quyền / Đổi Status
+- **Policy RLS UPDATE**:
+  ```sql
+  CREATE POLICY "Profiles - User cap nhat ho so ca nhan"
+    ON public.profiles FOR UPDATE TO authenticated
+    USING (auth.uid() = id)
+    WITH CHECK (
+      auth.uid() = id
+      AND access_level = (SELECT p.access_level FROM public.profiles p WHERE p.id = auth.uid())
+      AND status = (SELECT p.status FROM public.profiles p WHERE p.id = auth.uid())
+      AND COALESCE(banned_reason, '') IS NOT DISTINCT FROM COALESCE((SELECT p.banned_reason FROM public.profiles p WHERE p.id = auth.uid()), '')
+      AND COALESCE(email, '') IS NOT DISTINCT FROM COALESCE((SELECT p.email FROM public.profiles p WHERE p.id = auth.uid()), '')
+    );
+  ```
+- **Tác dụng bảo mật**: Mệnh đề `WITH CHECK` đối chiếu trực tiếp các trường nhạy cảm (`access_level`, `status`, `banned_reason`, `email`) với dữ liệu hiện tại trong DB snapshot. Nếu học viên cố tình F12 / gọi `supabase-js` update role hoặc status, PostgreSQL RLS Engine sẽ **REJECT câu lệnh UPDATE ngay lập tức tại tầng Database**.
+
+### 2. Quy tắc An toàn Admin & Bảo vệ Admin Cuối cùng
+- **Bảo vệ tuyệt đối**: Admin KHÔNG THỂ tự hạ quyền, tự khóa hoặc tự xóa tài khoản của chính mình (chặn 100% ở Server Action và ẩn nút trên UI).
+- **Hệ thống luôn còn >= 1 Admin active**: Trước khi hạ quyền, khóa hoặc xóa một Admin khác, Server Action gọi `check_active_admin_count_locked()` khóa các hàng Admin trong DB với `FOR UPDATE`. Nếu số Admin active < 2, thao tác bị hủy bỏ và báo lỗi.
+- **Xác nhận 2 lớp khi nâng Admin / Xóa User**: Nâng quyền Admin hoặc xóa tài khoản bắt buộc nhập đúng email tài khoản đích ở Server-side.
+
+### 3. Sơ đồ Luồng Banned & Khóa Tài khoản 2 Lớp
+
+```
+[Admin Bấm Khóa User]
+        │
+        ├──► 1. UPDATE profiles.status = 'banned' + banned_reason
+        └──► 2. Auth Native Ban: updateUserById(userId, { ban_duration: '876000h' })
+        │
+        ▼ (Người dùng bị ban gửi request HTTP tiếp theo)
+[Middleware Intercept]
+        │
+        ▼ (Query profiles.status == 'banned')
+[supabase.auth.signOut()] ──► Xóa sạch Session Cookies ngay lập tức
+        │
+        ▼
+[Redirect /account-banned] ──► Hiển thị thông báo 🚫, lý do bị ban & email hỗ trợ
+```
+
+### 4. Cảnh báo Bảo mật Service Role Key (`SUPABASE_SERVICE_ROLE_KEY`)
+- Key `SUPABASE_SERVICE_ROLE_KEY` chỉ được khởi tạo duy nhất tại Server-side trong `lib/supabase/admin.ts` và `lib/admin/user-actions.ts`.
+- **CẢNH BÁO BẢO MẬT**: KHÔNG thêm prefix `NEXT_PUBLIC_`, KHÔNG import ở Client Component, KHÔNG xuất hiện trong client bundle/props hay console.log.
+
+### 5. Cấu hình React Query Cache Tập trung & Danh sách Ngoại lệ
 - **Provider tập trung**: Khai báo duy nhất tại `components/shared/providers.tsx`.
 - **Cấu hình mặc định**:
   - `staleTime`: 60.000 ms (60 giây)
@@ -171,7 +242,7 @@ order_index: 1    # Số nguyên >= 0 (tùy chọn)
   2. **Tiến trình phiên Quiz (`activeQueue`)**: Lưu trực tiếp trong RAM Client State trong suốt phiên làm bài.
   3. **Xác thực đáp án trắc nghiệm (`verifyVocabAnswer`)**: Gọi Server Action trực tiếp không qua cache query để đối chiếu đáp án DB.
 
-### 2. Mô hình Suspense Streaming & Localized Error Boundaries tại `/today`
+### 6. Mô hình Suspense Streaming & Localized Error Boundaries tại `/today`
 Trang `/today` sử dụng kiến trúc Streaming Server Components:
 - **Khối Header & Streak**: Render trực tiếp không qua Suspense (dữ liệu nhẹ).
 - **4 Khối chức năng độc lập**:
@@ -181,7 +252,7 @@ Trang `/today` sử dụng kiến trúc Streaming Server Components:
   - `UnresolvedErrorsBlock`: Khối 4 • Sổ lỗi sai chưa khắc phục.
 - Mỗi khối được bọc riêng biệt trong `<Suspense fallback={<BlockSkeleton />}>` và `<BlockErrorBoundary>`. Nếu 1 khối gặp sự cố DB tạm thời, 3 khối còn lại vẫn stream HTML và hiển thị bình thường.
 
-### 3. Sơ đồ Luồng Submit Quiz Non-blocking & LocalStorage Fallback
+### 7. Sơ đồ Luồng Submit Quiz Non-blocking & LocalStorage Fallback
 
 ```
 [User Chọn Đáp Án] (0ms - Hiển thị viền chọn + Spinner, disable 4 option)
@@ -202,7 +273,7 @@ Trang `/today` sử dụng kiến trúc Streaming Server Components:
 [flushPendingProgressQueue()] ──► Đồng bộ bù toàn bộ queue tồn đọng lên Supabase
 ```
 
-### 4. Quy ước Component Nặng & Dynamic Import
+### 8. Quy ước Component Nặng & Dynamic Import
 - Các thư viện nặng hoặc Modal quản trị lớn (như Editor Markdown, XLSX import handlers, Modals thao tác hàng loạt) phải sử dụng `dynamic()` để lazy load:
   ```typescript
   const DynamicComponent = dynamic(() => import('./HeavyComponent'), {
@@ -239,9 +310,11 @@ DailyE/
 │   ├── (admin)/                    # Phân vùng quản trị Admin (yêu cầu access_level = admin)
 │   │   └── admin/
 │   │       ├── content/page.tsx     # CMS Quản lý Câu hỏi, Bài học & Từ vựng Active Recall
-│   │       ├── dashboard/page.tsx   # Dashboard Thống kê tổng quan
+│   │       ├── dashboard/page.tsx   # Dashboard Thống kê tổng quan & Thao tác gần đây
 │   │       ├── import/page.tsx      # Tab Import Excel Câu hỏi & Import CSV Từ vựng
 │   │       ├── taxonomy/page.tsx    # Quản lý Taxonomy Hệ thống (Topics & Levels)
+│   │       ├── users/page.tsx       # Quản lý Danh sách Thành viên, Filter, Role & Status
+│   │       ├── logs/page.tsx        # Xem Nhật ký Thao tác Admin (Audit Logs)
 │   │       └── vocab-test/page.tsx  # Công cụ thử nghiệm VocabQuizEngine dành cho Admin
 │   ├── (learner)/                  # Phân vùng Học viên
 │   │   ├── learn/
@@ -254,8 +327,17 @@ DailyE/
 │   │   │   ├── errors/page.tsx      # Trang Sổ lỗi sai cá nhân
 │   │   │   └── result/              # Trang kết quả & Lời giải chi tiết
 │   │   ├── today/page.tsx           # Trang chủ hằng ngày (Khối SRS, Lộ trình, Luyện đề)
-│   │   └── progress/page.tsx        # Báo cáo tiến độ 14 ngày gộp 2 nguồn & Top từ hay sai
+│   │   ├── progress/page.tsx        # Báo cáo tiến độ 14 ngày gộp 2 nguồn & Top từ hay sai
+│   │   ├── profile/page.tsx         # Trang cá nhân tóm tắt & nút dấn tới Thiết lập
+│   │   └── settings/page.tsx        # Trang Thiết lập tài khoản (Hồ sơ, Mục tiêu, Mật khẩu, Dangerous)
+│   ├── (public)/                   # Phân vùng Trang công khai
+│   │   ├── login/page.tsx           # Trang đăng nhập Email/Password & Google OAuth
+│   │   ├── register/page.tsx        # Trang đăng ký học viên mới
+│   │   ├── forgot-password/page.tsx # Trang yêu cầu gửi email khôi phục mật khẩu
+│   │   ├── reset-password/page.tsx  # Trang thiết lập mật khẩu mới từ Recovery Link
+│   │   └── account-banned/page.tsx  # Trang công khai thông báo tài khoản bị khóa 🚫
 │   ├── actions/                    # Server Actions (Zod validate, Supabase Server Client)
+│   │   ├── auth.ts                  # Đăng nhập, đăng ký, hồ sơ, mật khẩu, reset progress, delete account
 │   │   ├── admin.ts                 # CMS & Import logic
 │   │   ├── learn.ts                 # Lấy danh sách bài học Markdown
 │   │   ├── vocab.ts                 # Vocab Quiz Engine (generate, submit, finish)
@@ -264,20 +346,28 @@ DailyE/
 │   │   └── progress.ts              # Aggregate user performance stats
 │   ├── lib/
 │   │   ├── taxonomy.ts              # Single Source of Truth Taxonomy Service
+│   │   ├── supabase/
+│   │   │   ├── server.ts            # Supabase Server Client
+│   │   │   └── admin.ts             # Supabase Admin Client (Service Role Key)
 │   │   └── admin/
 │   │       ├── taxonomy-actions.ts  # Admin Server Actions cho Topics & Levels CRUD
-│   │       └── bulk-actions.ts      # Server Actions thao tác hàng loạt
+│   │       ├── bulk-actions.ts      # Server Actions thao tác hàng loạt
+│   │       └── user-actions.ts      # Admin Server Actions Quản lý Thành viên (Role, Ban, Delete)
+│   ├── components/
+│   │   ├── admin/
+│   │   │   └── user-detail-drawer.tsx # Drawer Chi tiết & Thao tác Quản trị Thành viên
+│   │   ├── shared/
+│   │   │   └── target-score-selector.tsx # Component Chọn Mục tiêu Điểm TOEIC tái sử dụng
+│   │   ├── vocab/                   # Nhóm Component Từ vựng Active Recall
+│   │   │   ├── MCQVocabCard.tsx         # Component Trắc nghiệm 2 chiều (Anh-Việt & Việt-Anh)
+│   │   │   ├── MatchingVocabBoard.tsx   # Component Ghép cặp Từ ↔ Nghĩa (2 cột)
+│   │   │   ├── TopicCard.tsx            # Component Thẻ chủ đề từ vựng kèm tiến độ
+│   │   │   ├── WordIntroCard.tsx        # Component Giới thiệu 5 từ mới trước khi Quiz
+│   │   │   ├── VocabSummaryCard.tsx     # Component Màn tổng kết phiên học từ vựng
+│   │   │   └── VocabQuizEngine.tsx      # Main Container Engine quản lý state & hàng đợi
+│   │   └── ui/                      # Component giao diện shadcn/ui
 │   ├── layout.tsx                   # Layout gốc & SEO Metadata
 │   └── page.tsx                     # Landing Page giới thiệu
-├── components/
-│   ├── vocab/                       # Nhóm Component Từ vựng Active Recall
-│   │   ├── MCQVocabCard.tsx         # Component Trắc nghiệm 2 chiều (Anh-Việt & Việt-Anh)
-│   │   ├── MatchingVocabBoard.tsx   # Component Ghép cặp Từ ↔ Nghĩa (2 cột)
-│   │   ├── TopicCard.tsx            # Component Thẻ chủ đề từ vựng kèm tiến độ
-│   │   ├── WordIntroCard.tsx        # Component Giới thiệu 5 từ mới trước khi Quiz
-│   │   ├── VocabSummaryCard.tsx     # Component Màn tổng kết phiên học từ vựng
-│   │   └── VocabQuizEngine.tsx      # Main Container Engine quản lý state & hàng đợi
-│   └── ui/                          # Component giao diện shadcn/ui
 ├── public/
 │   └── templates/
 │       ├── dailye_questions_template.xlsx        # File mẫu Excel Import Câu hỏi TOEIC
@@ -294,7 +384,9 @@ DailyE/
 │   │   ├── 005_admin_action_logs.sql # Nhật ký thao tác Admin & RLS Security Policies
 │   │   ├── 006_dynamic_taxonomy.sql # Dynamic Taxonomy (nâng cấp topics, bảng levels, FKs)
 │   │   ├── 007_move_topic_content_rpc.sql # PL/pgSQL Stored Procedure di chuyển data trong SQL Transaction
-│   │   └── 008_import_test_transaction.sql # PL/pgSQL Stored Procedure import/overwrite Đề thi trong SQL Transaction
+│   │   ├── 008_import_test_transaction.sql # PL/pgSQL Stored Procedure import/overwrite Đề thi trong SQL Transaction
+│   │   ├── 009_account_management.sql # Mở rộng profiles (email, status, goal), siết RLS, RPC reset_my_progress
+│   │   └── 010_admin_user_management.sql # RPC check_active_admin_count_locked (Row Lock FOR UPDATE)
 │   └── scripts/                     # Các SQL Script tiện ích
 │       ├── reset_test_data.sql      # Script dọn sạch dữ liệu test (giữ admin/profiles)
 │       └── seed_vocab_test.sql       # Script chèn 25 từ vựng test cho 3 chủ đề
@@ -323,6 +415,9 @@ Tạo file `.env.local` tại thư mục gốc dựa theo mẫu `.env.example`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+
+# Service Role Key (CHỈ SERVER-SIDE, KHÔNG THÊM NEXT_PUBLIC_, KHÔNG COMMIT GIÁ TRỊ THẬT)
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 ```
 
 ### 4. Khởi chạy Server Phát triển (Dev Mode)
@@ -337,7 +432,7 @@ Truy cập địa chỉ: `http://localhost:3000`
 
 Đăng nhập vào [Supabase Dashboard](https://supabase.com/dashboard) -> Chọn dự án của bạn -> Mở **SQL Editor** và thực hiện theo các bước:
 
-### Bước 1: Chạy 7 File Migrations theo đúng thứ tự
+### Bước 1: Chạy 10 File Migrations theo đúng thứ tự
 1. **`supabase/migrations/001_init.sql`**: Khởi tạo cấu trúc bảng chính, Trigger tự tạo Profile, RLS Policies và SAFE VIEW `published_questions_safe`.
 2. **`supabase/migrations/002_lesson_progress.sql`**: Khởi tạo bảng `lesson_progress` theo dõi tiến độ bài học.
 3. **`supabase/migrations/003_srs_and_streak.sql`**: Bổ sung theo dõi 2 lần đúng liên tiếp trong `error_logs`, chuỗi ngày học liên tiếp (`streak_count`) trong `profiles` và các chỉ mục Index.
@@ -345,6 +440,9 @@ Truy cập địa chỉ: `http://localhost:3000`
 5. **`supabase/migrations/005_admin_action_logs.sql`**: Khởi tạo bảng `admin_action_logs` lưu vết nhật ký thao tác Admin.
 6. **`supabase/migrations/006_dynamic_taxonomy.sql`**: Nâng cấp `topics` động, tạo bảng `levels` động (seed 4 level), cập nhật ràng buộc FKs và RLS policies.
 7. **`supabase/migrations/007_move_topic_content_rpc.sql`**: Tạo PL/pgSQL Stored Procedure `public.move_topic_content` di chuyển dữ liệu trong SQL Transaction block.
+8. **`supabase/migrations/008_import_test_transaction.sql`**: Tạo PL/pgSQL Stored Procedure `public.import_test_with_questions` import/overwrite Đề thi trong SQL Transaction block.
+9. **`supabase/migrations/009_account_management.sql`**: Mở rộng `profiles` (`email`, `status`, `banned_reason`, `daily_goal_minutes`, `updated_at`), cập nhật trigger `handle_new_user` copy email & backfill, siết RLS UPDATE với `WITH CHECK` chống tự nâng quyền và RPC `reset_my_progress()`.
+10. **`supabase/migrations/010_admin_user_management.sql`**: Tạo RPC `check_active_admin_count_locked()` sử dụng Row Lock `FOR UPDATE` bảo vệ số lượng Admin active chống Race condition.
 
 ### Bước 2: (Tùy chọn) Chạy Script Reset Dữ liệu Test & Seed Từ Vựng Mẫu
 - **`supabase/scripts/reset_test_data.sql`**: Dọn dẹp sạch dữ liệu mẫu thử nghiệm (*Lưu ý: CHỈ dùng khi muốn reset môi trường test, script sẽ giữ nguyên các tài khoản Admin/User trong `profiles`*).
@@ -355,15 +453,16 @@ Truy cập địa chỉ: `http://localhost:3000`
 
 ---
 
-## 👑 Hướng dẫn Nâng cấp Tài khoản Admin Đầu Tiên
+## 👑 Hướng dẫn Nâng cấp Tài khoản Admin Đầu Tiên & Qua UI
 
+### 1. Nâng cấp Admin Đầu tiên (Chỉ 1 Lần Duy Nhất Qua SQL)
 1. Đăng ký tài khoản mới trên trang web: `http://localhost:3000/register` (Ví dụ email: `admin@gmail.com`).
-2. Vào **Supabase SQL Editor** chạy câu lệnh nâng cấp quyền:
+2. Vào **Supabase SQL Editor** chạy câu lệnh nâng cấp quyền Admin ban đầu:
 
 ```sql
 UPDATE public.profiles 
 SET access_level = 'admin' 
-WHERE id = (SELECT id FROM auth.users WHERE email = 'admin@gmail.com');
+WHERE email = 'admin@gmail.com';
 ```
 
 Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ quyền truy cập các trang quản trị:
@@ -372,7 +471,14 @@ Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ
 - `/admin/content`: Quản lý câu hỏi, bài học Markdown & Từ vựng Active Recall
 - `/admin/import`: Nhập liệu hàng loạt bằng file Excel/CSV (Tab Câu hỏi & Tab Từ vựng)
 - `/admin/taxonomy`: Quản lý Taxonomy Hệ thống (Chủ đề & Trình độ)
+- `/admin/users`: Quản lý danh sách thành viên, phân quyền & trạng thái
 - `/admin/logs`: Nhật ký thao tác Admin
+
+### 2. Nâng cấp Các Admin Tiếp theo (Trực tiếp Qua UI Quản trị)
+Sau khi có Admin đầu tiên, việc nâng quyền cho các thành viên khác được thực hiện **trực tiếp tại trang `/admin/users`**:
+1. Đăng nhập tài khoản Admin -> Truy cập `/admin/users`.
+2. Mở Drawer chi tiết thành viên -> Tại mục **Access Level**, chọn `Administrator (Admin)`.
+3. Gõ chính xác địa chỉ email của thành viên được nâng quyền vào ô xác nhận -> Bấm **Lưu role**.
 
 ---
 
@@ -394,34 +500,37 @@ Sau khi chạy xong lệnh trên, tài khoản của bạn sẽ có đầy đủ
 
 ---
 
-## 🌐 Hướng dẫn Deploy lên Vercel & Cấu hình Supabase
+## 🌐 Hướng dẫn Deploy lên Vercel & Cấu hình Supabase Auth
 
 ### Bước 1: Deploy lên Vercel
 1. Đẩy mã nguồn lên kho chứa GitHub.
 2. Đăng nhập [Vercel Dashboard](https://vercel.com) -> Chọn **Add New Project** -> Chọn Repository GitHub của bạn.
-3. Tại phần **Environment Variables**, điền 2 biến môi trường:
+3. Tại phần **Environment Variables**, điền các biến môi trường:
    - `NEXT_PUBLIC_SUPABASE_URL`: `<URL Supabase của bạn>`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `<Anon Key Supabase của bạn>`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `<Service Role Key của bạn - Cảnh báo: Không có prefix NEXT_PUBLIC_>`
 4. Nhấn **Deploy** và đợi Vercel tạo domain production (ví dụ: `https://dailye.vercel.app`).
 
-### Bước 2: Thêm Redirect URL trên Supabase Auth
+### Bước 2: Thêm Redirect URLs trên Supabase Auth Dashboard
 1. Đăng nhập Supabase Dashboard -> Chọn mục **Authentication** -> **URL Configuration**.
 2. Tại mục **Site URL**, điền domain Vercel của bạn: `https://dailye.vercel.app`.
-3. Tại mục **Redirect URLs**, nhấn **Add URL** và thêm 2 địa chỉ:
+3. Tại mục **Redirect URLs**, nhấn **Add URL** và thêm các địa chỉ:
    - `https://dailye.vercel.app/auth/callback`
+   - `https://dailye.vercel.app/reset-password`
    - `http://localhost:3000/auth/callback`
-4. Nhấn **Save** để hoàn tất cấu hình Google OAuth & Magic Link.
+   - `http://localhost:3000/reset-password`
+4. Tại mục **Email Templates**: Đảm bảo bật template **Reset Password** để gửi liên kết khôi phục mật khẩu.
 
 ---
 
-## 📋 Checklist 19 Mục "Smoke Test" Sau Khi Deploy Production
+## 📋 Checklist 23 Mục "Smoke Test" Sau Khi Deploy Production
 
-Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 19 mục quan trọng nhất:
+Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 23 mục quan trọng nhất:
 
 | # | Mục Kiểm Thử (Smoke Test) | Trạng Thái Kỳ Vọng |
 |---|---|---|
 | 1 | **Trang Landing Page (`/`)** | Hiển thị thương hiệu DailyE, khẩu hiệu và các nút Đăng nhập / Đăng ký. |
-| 2 | **Đăng ký / Đăng nhập Email (`/register`, `/login`)** | Tạo tài khoản thành công, tự chuyển hướng sang `/onboarding`. |
+| 2 | **Đăng ký / Đăng nhập Email (`/register`, `/login`)** | Tạo tài khoản thành công, tự chuyển hướng sang `/onboarding`. Profile có `email`. |
 | 3 | **Onboarding 2 bước (`/onboarding`)** | Chọn được mục tiêu điểm TOEIC và lưu thành công vào `profiles`. |
 | 4 | **Quyền Admin (`/admin/dashboard`)** | Tài khoản có `access_level = 'admin'` vào được Dashboard, tài khoản `free` bị chuyển hướng về `/today`. |
 | 5 | **Import Excel Câu hỏi & CSV Từ vựng (`/admin/import`)** | Upload file mẫu chuẩn, phân tích Zod 0 lỗi và commit lưu thành công vào DB dưới dạng Draft. |
@@ -432,17 +541,43 @@ Sau khi hoàn tất Deploy, tiến hành kiểm thử nhanh 19 mục quan trọn
 | 10 | **Trang Kết quả (`/practice/result/[attemptId]`)** | Hiển thị đúng điểm số %, lộ lời giải chi tiết và gợi ý bài học đối với các tag bị sai. |
 | 11 | **Ôn từ vựng SRS hằng ngày (`/today`)** | Từ vựng đến hạn do SRS Leitner xuất hiện ở Khối 1 (`🔤 X từ đến hạn ôn`), làm bài quiz thành công và Streak 🔥 tăng ngày. |
 | 12 | **Báo cáo Tiến độ 14 ngày (`/progress`)** | Hiển thị thống kê từ đã thuộc/đang học, Top 5 từ hay sai nhất kèm nút *"Ôn ngay"*, biểu đồ 14 ngày phân biệt rõ cột TOEIC vs Vocab. |
-| 13 | **Import Multi-file Bài học .md (`/admin/import` - Tab 3)** *(Mới ở 5E)* | Upload 3 file `.md` mẫu $\rightarrow$ Preview render đúng, báo xanh 2 file hợp lệ, báo đỏ 1 file lỗi syntax/slug, commit thành công vào DB. |
-| 14 | **Import & Làm Đề thi Cố định (`/practice`)** *(Mới ở 5E)* | Import đề thi Excel 2 sheets $\rightarrow$ Publish tại `/admin/content` $\rightarrow$ Học viên thấy mục Bộ Đề thi cố định tại `/practice`, làm bài đúng thứ tự câu hỏi và countdown 20 phút $\rightarrow$ Kết quả ghi nhận vào `test_attempts`. |
-| 15 | **Import Liên kết Bài học ↔ Câu hỏi với Code sai (`/admin/import` - Tab 4)** *(Mới ở 5E)* | Upload file liên kết chứa `question_code` hoặc `lesson_slug` không tồn tại $\rightarrow$ Preview hiển thị lỗi Đỏ kèm thông báo gợi ý mã gần đúng. |
-| 16 | **Import Taxonomy & Dynamic Cache Revalidate (`/admin/import` - Tab 6)** *(Mới ở 5E)* | Import file mẫu Taxonomy 2 sheets $\rightarrow$ Topic/Level mới xuất hiện NGAY TRONG DROPDOWN của Tab Import Từ vựng mà không cần F5 xoá cache. |
-| 17 | **Chuyển tab Không Trắng Màn hình (`/today` ↔ `/learn` ↔ `/progress`)** *(Phase 5F)* | Chuyển tab trên mạng Slow 3G hiển thị Skeleton < 100ms (lần 1) và hiển thị dữ liệu tức thì < 50ms nhờ React Query cache (lần 2). |
-| 18 | **Phản hồi Quiz Tức thì < 100ms** *(Phase 5F)* | Click chọn đáp án trắc nghiệm hiển thị hiệu ứng chờ 0ms, đối chiếu kết quả server ~80ms, nút "Câu tiếp theo" active ngay lập tức 0ms delay. |
-| 19 | **Bảo vệ Dữ liệu SRS khi Rớt Mạng** *(Phase 5F)* | Ngắt kết nối mạng giữa phiên quiz $\rightarrow$ Toast màu vàng thông báo + dữ liệu lưu tạm `localStorage` $\rightarrow$ Kết nối lại tự động flush đủ dòng vào `user_vocab_progress` & `review_schedule`. |
+| 13 | **Import Multi-file Bài học .md (`/admin/import` - Tab 3)** | Upload file `.md` mẫu $\rightarrow$ Preview render đúng, commit thành công vào DB. |
+| 14 | **Import & Làm Đề thi Cố định (`/practice`)** | Import đề thi Excel 2 sheets $\rightarrow$ Publish tại `/admin/content` $\rightarrow$ Học viên thấy mục Bộ Đề thi cố định tại `/practice`. |
+| 15 | **Import Liên kết Bài học ↔ Câu hỏi với Code sai (`/admin/import` - Tab 4)** | Upload file liên kết chứa code không tồn tại $\rightarrow$ Preview hiển thị lỗi Đỏ kèm thông báo gợi ý. |
+| 16 | **Import Taxonomy & Dynamic Cache Revalidate (`/admin/import` - Tab 6)** | Import file mẫu Taxonomy 2 sheets $\rightarrow$ Topic/Level mới xuất hiện NGAY TRONG DROPDOWN mà không cần F5. |
+| 17 | **Chuyển tab Không Trắng Màn hình (`/today` ↔ `/learn` ↔ `/progress`)** | Chuyển tab trên mạng Slow 3G hiển thị Skeleton < 100ms (lần 1) và dữ liệu tức thì < 50ms (lần 2). |
+| 18 | **Phản hồi Quiz Tức thì < 100ms** | Click chọn đáp án trắc nghiệm hiển thị hiệu ứng chờ 0ms, đối chiếu kết quả server ~80ms, nút "Câu tiếp theo" active ngay lập tức. |
+| 19 | **Bảo vệ Dữ liệu SRS khi Rớt Mạng** | Ngắt kết nối mạng giữa phiên quiz $\rightarrow$ Toast màu vàng thông báo + dữ liệu lưu tạm `localStorage` $\rightarrow$ Tự động flush bù. |
+| 20 | **Đổi Mật khẩu & Quên Mật khẩu (`/settings`, `/forgot-password`, `/reset-password`)** | Đổi mật khẩu tài khoản email/password thành công; Quên mật khẩu gửi mail trung tính chống rà quét; reset password bằng link khôi phục OK. Tài khoản Google bị ẩn/chặn đổi mật khẩu. |
+| 21 | **Khóa / Mở khóa Thành viên bởi Admin & Redirect `/account-banned`** | Admin khóa user đang online $\rightarrow$ Ngay lập tức bị Middleware đá về `/account-banned` hiển thị lý do khóa. Đăng nhập lại bị chặn. Được unban $\rightarrow$ Đăng nhập lại bình thường, dữ liệu còn nguyên. |
+| 22 | **Bảo vệ Admin Cuối cùng & Chặn Tự Thao tác Cá nhân** | Admin không thể tự hạ quyền, tự khóa hoặc tự xóa tài khoản của chính mình. Admin cuối cùng trong hệ thống không thể bị hạ quyền hoặc tự xóa (Row Lock `check_active_admin_count_locked()` bảo vệ). |
+| 23 | **Siết Bảo mật RLS `public.profiles`** | Học viên thường cố tình gọi `supabase-js` update `access_level` hoặc `status` bị PostgreSQL RLS REJECT 100% tại tầng Database Engine. |
 
 ---
 
 ## 📝 Nhật ký Thay đổi (Changelog)
+
+### Version 2.6.0 (2026-08-13) - Phase 5G: User Management, Account Settings & Security Hardening
+- **Trang Thiết lập Tài khoản Học viên (`/settings`)**:
+  - Cập nhật Họ và tên, mục tiêu điểm TOEIC (tái sử dụng `TargetScoreSelector`), mục tiêu học hằng ngày (`daily_goal_minutes` 5-240 phút). Hiển thị email (readonly) và provider đăng nhập (`email`/`google`).
+  - Đổi mật khẩu dành riêng cho tài khoản Email/Password. Kiểm tra server-side chặn 100% tài khoản Google.
+  - Đặt lại tiến độ học tập (`reset_my_progress`): Xóa sạch dữ liệu thi, từ vựng, sổ lỗi sai trong 1 SQL Transaction nguyên tử, giữ nguyên profile & streak.
+  - Xóa tài khoản cá nhân vĩnh viễn (Hard Delete `auth.admin.deleteUser` + CASCADE dọn 7 bảng học tập) với xác nhận 2 lớp.
+- **Trang Quản lý Thành viên Admin (`/admin/users`)**:
+  - Bảng thành viên kèm tìm kiếm ILIKE (tên/email), bộ lọc Quyền/Trạng thái, sắp xếp và phân trang 20 user/trang.
+  - Drawer Chi tiết Thành viên (`UserDetailDrawer`): Xem chi tiết hồ sơ, provider, thống kê học tập (lượt thi, điểm TB, từ vựng thuộc/đang học, bài học hoàn thành, streak, ngày hoạt động gần nhất).
+  - Thao tác quản trị: Đổi Role (xác nhận email 2 lớp khi nâng Admin), Khóa tài khoản 2 lớp (`profiles.status='banned'` + Auth Native Ban `updateUserById({ ban_duration })` kèm lý do min 10 chars), Mở khóa tài khoản, Gửi email reset mật khẩu hộ user, Xóa vĩnh viễn user bởi Admin.
+- **Bảo mật & Siết RLS `public.profiles` (Migration `009_account_management.sql` & `010_admin_user_management.sql`)**:
+  - RLS Policy `WITH CHECK` đối chiếu trực tiếp `access_level`, `status`, `banned_reason`, `email` với DB snapshot -> Chặn 100% đòn đánh F12/Inspect tự nâng quyền ở Client.
+  - RPC `check_active_admin_count_locked()` với Row Lock `FOR UPDATE` bảo vệ hệ thống luôn duy trì `>= 1` Admin active, triệt tiêu 100% Race condition.
+  - Cấm Admin tự hạ quyền, khóa hoặc xóa chính mình.
+- **Khóa Tài khoản 2 Lớp & Trang `/account-banned`**:
+  - Trang công khai `/account-banned` hiển thị thông báo khóa tài khoản 🚫, lý do bị ban & email hỗ trợ `support@dailye.com`.
+  - Middleware kiểm tra `profile.status === 'banned'` trên tất cả các request bảo vệ -> Đăng xuất `signOut()` và redirect tức thì về `/account-banned`.
+- **💥 Breaking Changes**:
+  - Thay đổi RLS Policy UPDATE trên bảng `public.profiles` (Migration `009_account_management.sql`) áp dụng mệnh đề `WITH CHECK` đối chiếu với DB snapshot. Đây là **Breaking Change** đối với các Client cũ cố tình gọi trực tiếp `supabase-js` để update `access_level` hoặc `status` (PostgreSQL RLS sẽ REJECT câu lệnh UPDATE).
+
+---
 
 ### Version 2.5.0 (2026-08-12) - Phase 5F: UI/UX Performance Optimization & Resilient Sync
 - **Tối ưu hóa Phản hồi Thị giác & Tốc độ UI (~100ms Goal)**:

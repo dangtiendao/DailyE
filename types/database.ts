@@ -11,6 +11,7 @@ export type Json =
   | Json[];
 
 export type AccessLevel = 'free' | 'premium' | 'admin';
+export type UserStatus = 'active' | 'banned';
 export type TOEICPart = 'part1' | 'part2' | 'part3' | 'part4' | 'part5' | 'part6' | 'part7';
 export type SkillType = 'vocabulary' | 'grammar' | 'listening' | 'reading' | 'strategy';
 export type ContentStatus = 'draft' | 'published';
@@ -28,8 +29,12 @@ export interface Database {
         Row: {
           id: string;
           full_name: string | null;
+          email: string | null;
           target_score: number | null;
           access_level: AccessLevel;
+          status: UserStatus;
+          banned_reason: string | null;
+          daily_goal_minutes: number;
           current_level: string | null;
           streak_count: number;
           last_active_date: string | null;
@@ -39,8 +44,12 @@ export interface Database {
         Insert: {
           id: string;
           full_name?: string | null;
+          email?: string | null;
           target_score?: number | null;
           access_level?: AccessLevel;
+          status?: UserStatus;
+          banned_reason?: string | null;
+          daily_goal_minutes?: number;
           current_level?: string | null;
           streak_count?: number;
           last_active_date?: string | null;
@@ -50,8 +59,12 @@ export interface Database {
         Update: {
           id?: string;
           full_name?: string | null;
+          email?: string | null;
           target_score?: number | null;
           access_level?: AccessLevel;
+          status?: UserStatus;
+          banned_reason?: string | null;
+          daily_goal_minutes?: number;
           current_level?: string | null;
           streak_count?: number;
           last_active_date?: string | null;
@@ -597,6 +610,35 @@ export interface Database {
           created_at?: string;
         };
       };
+      admin_action_logs: {
+        Row: {
+          id: string;
+          admin_id: string | null;
+          action_type: string;
+          content_type: string;
+          affected_ids: Json;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_id?: string | null;
+          action_type: string;
+          content_type: string;
+          affected_ids?: Json;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          admin_id?: string | null;
+          action_type?: string;
+          content_type?: string;
+          affected_ids?: Json;
+          payload?: Json;
+          created_at?: string;
+        };
+      };
     };
     Views: {
       published_questions_safe: {
@@ -618,6 +660,30 @@ export interface Database {
           source_id: string | null;
           status: ContentStatus;
           created_at: string;
+        };
+      };
+    };
+    Functions: {
+      count_active_admins: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      check_active_admin_count_locked: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      reset_my_progress: {
+        Args: Record<string, never>;
+        Returns: {
+          success: boolean;
+          user_id: string;
+          deleted_error_logs: number;
+          deleted_review_schedule: number;
+          deleted_user_vocab_progress: number;
+          deleted_vocab_sessions: number;
+          deleted_user_answers: number;
+          deleted_test_attempts: number;
+          deleted_lesson_progress: number;
         };
       };
     };
