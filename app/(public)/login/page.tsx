@@ -12,10 +12,14 @@ import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const oauthError = searchParams.get('error');
+  const errorParam = searchParams.get('error');
 
   const [serverError, setServerError] = useState<string | null>(
-    oauthError === 'oauth_failed' ? 'Đăng nhập Google thất bại. Vui lòng thử lại.' : null
+    errorParam === 'banned'
+      ? 'Tài khoản của bạn đã bị khóa bởi Quản trị viên. Vui lòng liên hệ hỗ trợ.'
+      : errorParam === 'oauth_failed'
+      ? 'Đăng nhập Google thất bại. Vui lòng thử lại.'
+      : null
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -119,7 +123,12 @@ function LoginFormContent() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-300 mb-1">Mật khẩu</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-medium text-slate-300">Mật khẩu</label>
+            <Link href="/forgot-password" className="text-xs text-blue-400 hover:underline">
+              Quên mật khẩu?
+            </Link>
+          </div>
           <input
             type="password"
             placeholder="••••••••"

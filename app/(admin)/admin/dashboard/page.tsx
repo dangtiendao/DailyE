@@ -10,6 +10,8 @@ export default async function AdminDashboardPage() {
     totalQuestions: 0,
     totalLessons: 0,
     totalUsers: 0,
+    newUsers7Days: 0,
+    bannedUsers: 0,
     latestImport: null,
   };
   let fetchError = null;
@@ -55,11 +57,18 @@ export default async function AdminDashboardPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
+            href="/admin/users"
+            className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"
+          >
+            <Users className="w-4 h-4 text-blue-600" />
+            👥 Thành viên
+          </Link>
+          <Link
             href="/admin/taxonomy"
             className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-2 transition"
           >
             <Layers className="w-4 h-4 text-purple-600" />
-            🏷️ Taxonomy (Topics/Levels)
+            🏷️ Taxonomy
           </Link>
           <Link
             href="/admin/logs"
@@ -120,15 +129,24 @@ export default async function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
+        <Link
+          href="/admin/users"
+          className="p-5 bg-white border border-slate-200 hover:border-blue-400 rounded-2xl shadow-sm flex items-center gap-4 transition cursor-pointer group"
+        >
+          <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-100 transition">
             <Users className="w-8 h-8" />
           </div>
           <div>
-            <p className="text-xs text-slate-500 font-medium">Tổng học viên</p>
+            <p className="text-xs text-slate-500 font-medium flex items-center gap-1">
+              <span>Tổng thành viên</span>
+              <span className="text-blue-600 font-bold group-hover:underline">&rarr;</span>
+            </p>
             <p className="text-2xl font-bold text-slate-900 mt-0.5">{stats.totalUsers} người</p>
+            <p className="text-[10px] text-slate-400">
+              +{stats.newUsers7Days || 0} mới (7 ngày) • {stats.bannedUsers || 0} bị khóa
+            </p>
           </div>
-        </div>
+        </Link>
 
         <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center gap-4">
           <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">

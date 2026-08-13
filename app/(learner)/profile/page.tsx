@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { logout } from '@/app/actions/auth';
 import { User, Settings, ShieldCheck, LogOut, Award, Loader2, Sparkles } from 'lucide-react';
@@ -69,6 +70,17 @@ export default function ProfilePage() {
 
       {/* Menu cài đặt */}
       <div className="space-y-2">
+        <Link
+          href="/settings"
+          className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-slate-800 font-semibold text-sm hover:bg-slate-50 transition cursor-pointer shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <Settings className="w-5 h-5 text-blue-600" />
+            <span>⚙️ Thiết lập tài khoản</span>
+          </div>
+          <span className="text-xs text-slate-400 font-normal">Sửa hồ sơ, mật khẩu & cài đặt &rarr;</span>
+        </Link>
+
         <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-slate-700 text-sm hover:bg-slate-50 transition cursor-pointer">
           <div className="flex items-center gap-3">
             <Sparkles className="w-5 h-5 text-amber-500" />
