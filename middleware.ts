@@ -44,6 +44,13 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin');
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register');
 
+  // 0. Truy cập route gốc "/" -> Điều hướng theo trạng thái đăng nhập
+  if (pathname === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = user ? '/today' : '/login';
+    return NextResponse.redirect(url);
+  }
+
   // 1. Chưa đăng nhập mà truy cập đường dẫn Learner hoặc Admin -> Redirect về /login
   if (!user && (isLearnerRoute || isAdminRoute)) {
     const url = request.nextUrl.clone();
@@ -80,6 +87,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/today/:path*',
     '/learn/:path*',
     '/practice/:path*',
