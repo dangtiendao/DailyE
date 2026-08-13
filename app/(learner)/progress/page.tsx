@@ -215,15 +215,15 @@ export default function ProgressPage() {
           </section>
 
           {/* BIỂU ĐỒ 14 NGÀY GẦN NHẤT (GỘP ĐỦ TOEIC VÀ VOCAB) */}
-          <section className="p-5 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-4">
+          <section className="p-4 sm:p-5 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-4 w-full max-w-full overflow-hidden">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-blue-600" />
+                <BarChart3 className="w-4 h-4 text-blue-600 shrink-0" />
                 <span>Hoạt động làm bài 14 ngày gần nhất</span>
               </h2>
             </div>
 
-            <div className="flex items-center justify-center gap-4 text-[11px] pt-1">
+            <div className="flex items-center justify-center gap-3 sm:gap-4 text-[11px] pt-1 flex-wrap">
               <span className="flex items-center gap-1 font-semibold text-emerald-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Đúng TOEIC
               </span>
@@ -236,44 +236,57 @@ export default function ProgressPage() {
             </div>
 
             {/* Dynamic Bar Chart */}
-            <div className="pt-4 pb-2 flex items-end justify-between gap-1 h-44 border-b border-slate-100">
-              {dailyStats.map((item) => {
+            <div className="pt-4 pb-2 flex items-end justify-between gap-0.5 sm:gap-1 h-44 border-b border-slate-100 w-full min-w-0">
+              {dailyStats.map((item, idx) => {
                 const toeicHeight = item.total > 0 ? Math.round((item.toeicCorrect / maxDailyCount) * 120) : 0;
                 const vocabHeight = item.total > 0 ? Math.round((item.vocabCorrect / maxDailyCount) * 120) : 0;
                 const wrongHeight = item.total > 0 ? Math.round((item.wrong / maxDailyCount) * 120) : 0;
 
+                // Format display date: "13/08" -> "13/8"
+                const parts = item.displayDate.split('/');
+                const shortDate = parts.length === 2 ? `${parseInt(parts[0], 10)}/${parseInt(parts[1], 10)}` : item.displayDate;
+                // Interval: On small mobile, show label every 2 days or for last day to prevent text overlap
+                const showOnMobile = idx % 2 === 0 || idx === dailyStats.length - 1;
+
                 return (
-                  <div key={item.date} className="flex-1 flex flex-col items-center gap-1 group relative">
+                  <div key={item.date} className="flex-1 min-w-0 flex flex-col items-center gap-1 group relative">
                     {/* Tooltip hover */}
                     {item.total > 0 && (
                       <div className="absolute -top-10 bg-slate-900 text-white text-[10px] px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap z-10 shadow-lg">
-                        TOEIC: {item.toeicCorrect} | Vocab: {item.vocabCorrect} | Sai: {item.wrong}
+                        {item.displayDate}: TOEIC {item.toeicCorrect} | Vocab {item.vocabCorrect} | Sai {item.wrong}
                       </div>
                     )}
 
                     <div className="w-full flex flex-col items-center justify-end h-32 gap-0.5">
                       {item.toeicCorrect > 0 && (
                         <div
-                          className="w-full max-w-[12px] bg-emerald-500 rounded-t-sm transition-all duration-300"
+                          className="w-full max-w-[8px] sm:max-w-[12px] bg-emerald-500 rounded-t-sm transition-all duration-300"
                           style={{ height: `${toeicHeight}px` }}
                         />
                       )}
                       {item.vocabCorrect > 0 && (
                         <div
-                          className="w-full max-w-[12px] bg-indigo-500 rounded-t-sm transition-all duration-300"
+                          className="w-full max-w-[8px] sm:max-w-[12px] bg-indigo-500 rounded-t-sm transition-all duration-300"
                           style={{ height: `${vocabHeight}px` }}
                         />
                       )}
                       {item.wrong > 0 && (
                         <div
-                          className="w-full max-w-[12px] bg-rose-400 rounded-t-sm transition-all duration-300"
+                          className="w-full max-w-[8px] sm:max-w-[12px] bg-rose-400 rounded-t-sm transition-all duration-300"
                           style={{ height: `${wrongHeight}px` }}
                         />
                       )}
                       {item.total === 0 && <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
                     </div>
 
-                    <span className="text-[10px] text-slate-400 font-medium">{item.displayDate}</span>
+                    <span
+                      className={cn(
+                        'text-[9px] sm:text-[10px] text-slate-400 font-medium truncate max-w-full text-center',
+                        !showOnMobile && 'hidden sm:block'
+                      )}
+                    >
+                      {shortDate}
+                    </span>
                   </div>
                 );
               })}
