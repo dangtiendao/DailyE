@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { ArrowRight, BookOpen, CheckCircle, Sparkles } from 'lucide-react';
 
-// Landing Page chính của ứng dụng DailyE
-export default function HomePage() {
+// Trang Giới thiệu (Landing Page) của ứng dụng DailyE
+export default function AboutPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-between p-6">
       {/* Navigation Bar đơn giản */}

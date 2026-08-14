@@ -152,14 +152,14 @@ function LoginFormContent() {
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-between p-4 relative overflow-hidden">
-      {/* Header quay lại trang chủ */}
+      {/* Header xem thông tin giới thiệu */}
       <header className="max-w-md mx-auto w-full pt-4">
         <Link
-          href="/"
+          href="/about"
           className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          Quay lại trang chủ
+          Giới thiệu về DailyE
         </Link>
       </header>
 
