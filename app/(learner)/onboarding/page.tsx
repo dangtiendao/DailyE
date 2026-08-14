@@ -3,16 +3,10 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateTargetScore } from '@/app/actions/auth';
-import { Award, ArrowRight, CheckCircle2, Loader2, Sparkles, HelpCircle } from 'lucide-react';
+import { Award, ArrowRight, Loader2, Sparkles, HelpCircle } from 'lucide-react';
+import { TargetScoreSelector } from '@/components/shared/target-score-selector';
 import { cn } from '@/lib/utils';
 
-const TARGET_SCORES = [
-  { score: 350, label: '350+ TOEIC', desc: 'Mới bắt đầu - Lấy lại gốc tiếng Anh' },
-  { score: 500, label: '500+ TOEIC', desc: 'Cơ bản - Ra trường & Xin việc phổ thông' },
-  { score: 650, label: '650+ TOEIC', desc: 'Khá - Yêu cầu doanh nghiệp & Tập đoàn' },
-  { score: 800, label: '800+ TOEIC', desc: 'Giỏi - Môi trường làm việc quốc tế' },
-  { score: 900, label: '900+ TOEIC', desc: 'Xuất sắc - Chuyên gia & Giảng dạy' },
-];
 
 // Màn hình Onboarding 2 bước cho học viên mới
 export default function OnboardingPage() {
@@ -85,35 +79,10 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <div className="space-y-3">
-              {TARGET_SCORES.map((item) => {
-                const isSelected = selectedScore === item.score;
-                return (
-                  <div
-                    key={item.score}
-                    onClick={() => setSelectedScore(item.score)}
-                    className={cn(
-                      "p-4 border-2 rounded-2xl cursor-pointer transition-all flex items-center justify-between",
-                      isSelected
-                        ? "border-blue-600 bg-blue-50/50 shadow-sm"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    )}
-                  >
-                    <div className="space-y-0.5">
-                      <p className={cn("font-bold text-sm", isSelected ? "text-blue-900" : "text-slate-800")}>
-                        {item.label}
-                      </p>
-                      <p className="text-xs text-slate-500">{item.desc}</p>
-                    </div>
-                    {isSelected ? (
-                      <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <TargetScoreSelector
+              selectedScore={selectedScore}
+              onSelectScore={setSelectedScore}
+            />
 
             <button
               onClick={handleNextStep}
